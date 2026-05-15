@@ -18,30 +18,63 @@ const stats: Array<{
   { value: 0, label: 'intermediaries', desc: 'wallet to wallet' },
 ];
 
-const plans = [
+const solPlans = [
   {
     name: 'weekly',
     price: '1.5',
+    currency: 'SOL',
     period: 'week',
     desc: 'pay as you go. cancel anytime.',
     status: 'auto-renews in 4d',
-    isPopular: false,
+    isHighlighted: false,
   },
   {
     name: 'monthly',
     price: '5',
+    currency: 'SOL',
     period: 'month',
     desc: 'best for most teams and projects.',
     status: 'auto-renews in 27d',
-    isPopular: true,
+    isHighlighted: true,
   },
   {
     name: 'yearly',
     price: '50',
+    currency: 'SOL',
     period: 'year',
     desc: 'save 17%. billed once a year.',
     status: 'auto-renews in 341d',
-    isPopular: false,
+    isHighlighted: false,
+  },
+];
+
+const usdcPlans = [
+  {
+    name: 'basic',
+    price: '9.99',
+    currency: 'USDC',
+    period: 'month',
+    desc: 'for individuals. simple and affordable.',
+    status: 'auto-renews in 29d',
+    isHighlighted: false,
+  },
+  {
+    name: 'pro',
+    price: '29',
+    currency: 'USDC',
+    period: 'month',
+    desc: 'for growing teams. everything you need.',
+    status: 'auto-renews in 29d',
+    isHighlighted: true,
+  },
+  {
+    name: 'enterprise',
+    price: '199',
+    currency: 'USDC',
+    period: 'year',
+    desc: 'unlimited access. priority support.',
+    status: 'auto-renews in 348d',
+    isHighlighted: false,
   },
 ];
 
@@ -105,16 +138,18 @@ export function WhatIs() {
             <p className="mb-8 text-center text-xs italic text-zinc-600">
               example preview
             </p>
+
+            {/* SOL plans */}
             <div className="grid gap-4 sm:grid-cols-3">
-              {plans.map((plan, i) => (
+              {solPlans.map((plan, i) => (
                 <ScrollReveal key={plan.name} delay={i * 0.12}>
                   <TiltCard>
                     <div
                       className={`relative flex flex-col border bg-zinc-950 p-8 ${
-                        plan.isPopular ? 'border-zinc-600' : 'border-zinc-800'
+                        plan.isHighlighted ? 'border-zinc-600' : 'border-zinc-800'
                       }`}
                     >
-                      {plan.isPopular && (
+                      {plan.isHighlighted && (
                         <span className="absolute -top-3 left-6 bg-white px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider text-black">
                           most popular
                         </span>
@@ -129,7 +164,7 @@ export function WhatIs() {
                           {plan.price}
                         </span>
                         <span className="font-mono text-sm text-zinc-500">
-                          SOL/{plan.period}
+                          {plan.currency}/{plan.period}
                         </span>
                       </div>
 
@@ -141,6 +176,58 @@ export function WhatIs() {
 
                       <div className="mt-4 flex items-center gap-2 font-mono text-[11px] text-zinc-600">
                         <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500/70" />
+                        {plan.status}
+                      </div>
+                    </div>
+                  </TiltCard>
+                </ScrollReveal>
+              ))}
+            </div>
+
+            {/* divider */}
+            <div className="mt-6 border-t border-zinc-800 pt-6">
+              <p className="mb-6 text-center font-mono text-[10px] uppercase tracking-[0.25em] text-zinc-600">
+                or pay with stablecoins
+              </p>
+            </div>
+
+            {/* USDC plans */}
+            <div className="grid gap-4 sm:grid-cols-3">
+              {usdcPlans.map((plan, i) => (
+                <ScrollReveal key={plan.name} delay={i * 0.12}>
+                  <TiltCard>
+                    <div
+                      className={`relative flex flex-col border bg-zinc-900/60 p-8 ${
+                        plan.isHighlighted ? 'border-zinc-500' : 'border-zinc-700'
+                      }`}
+                    >
+                      {plan.isHighlighted && (
+                        <span className="absolute -top-3 left-6 bg-zinc-300 px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider text-black">
+                          recommended
+                        </span>
+                      )}
+
+                      <div className="text-xs font-mono uppercase tracking-[0.2em] text-zinc-500">
+                        {plan.name}
+                      </div>
+
+                      <div className="mt-4 flex items-baseline gap-1.5">
+                        <span className="font-mono text-3xl font-extrabold sm:text-4xl">
+                          {plan.price}
+                        </span>
+                        <span className="font-mono text-sm text-blue-400/60">
+                          {plan.currency}/{plan.period}
+                        </span>
+                      </div>
+
+                      <p className="mt-2 text-xs text-zinc-500">{plan.desc}</p>
+
+                      <div className="mt-6 border border-zinc-600 bg-white/[0.03] px-4 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-zinc-300">
+                        pay with USDC
+                      </div>
+
+                      <div className="mt-4 flex items-center gap-2 font-mono text-[11px] text-zinc-600">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-400/70" />
                         {plan.status}
                       </div>
                     </div>
