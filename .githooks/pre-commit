@@ -41,7 +41,8 @@ if [ -n "$MATCHES" ]; then
 fi
 
 # Layer 3: Content scanning — check staged file contents for private keywords
-PRIVATE_KEYWORDS="twitter/VOICE|CALENDAR\.md|tweet.*history|marka sesi|content calendar|@SublyFi.*strategy|pump\.fun|FwiaNTvgRCHEZGeKAfwcSE5KDxmh7jJPssT1pWqVpump"
+# Note: do not list the public SUBLY token mint here — it appears in apps/web by design.
+PRIVATE_KEYWORDS="twitter/VOICE|CALENDAR\.md|tweet.*history|marka sesi|content calendar|@SublyFi.*strategy|pump\.fun"
 
 for file in $STAGED; do
   if git show ":$file" 2>/dev/null | grep -qiE "$PRIVATE_KEYWORDS"; then

@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { BeamReveal } from './beam-reveal';
+import { CopyAddress } from './copy-address';
 
 const ease = [0.21, 0.47, 0.32, 0.98] as const;
 
@@ -93,7 +94,7 @@ export function Hero() {
           className="mt-12 flex flex-col items-center justify-center gap-4 sm:flex-row"
         >
           <a
-            href="https://app.subly.fi"
+            href="/app"
             className="group relative w-full overflow-hidden bg-white px-8 py-3 text-sm font-bold uppercase tracking-wider text-black transition-colors hover:bg-zinc-200 sm:w-auto"
           >
             <span className="relative z-10">launch app</span>
@@ -108,22 +109,17 @@ export function Hero() {
           </a>
         </motion.div>
 
-        {/* program id */}
+        {/* token CA */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6, delay: 2.6 }}
-          className="mt-14 font-mono text-xs"
+          className="mt-14"
         >
-          <span className="text-zinc-600">solana program </span>
-          <a
-            href="https://explorer.solana.com/address/De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-300 hover:underline"
-          >
-            De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44
-          </a>
+          <CopyAddress
+            label="CA"
+            address="FwiaNTvgRCHEZGeKAfwcSE5KDxmh7jJPssT1pWqVpump"
+          />
         </motion.div>
       </div>
 

@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion';
 import { ScrollReveal } from './scroll-reveal';
 import { Counter } from './counter';
+import { TiltCard } from './tilt-card';
 
 const stats: Array<{
   value: number | null;
@@ -100,50 +101,53 @@ export function WhatIs() {
             </h3>
           </ScrollReveal>
 
-          <div className="mt-12 grid gap-4 sm:grid-cols-3">
-            {plans.map((plan, i) => (
-              <ScrollReveal key={plan.name} delay={i * 0.12}>
-                <motion.div
-                  whileHover={{
-                    boxShadow: '0 0 30px rgba(255,255,255,0.06)',
-                    borderColor: 'rgba(161,161,170,0.4)',
-                  }}
-                  className={`relative flex flex-col border p-8 transition-all duration-300 ${
-                    plan.isPopular ? 'border-zinc-600' : 'border-zinc-800'
-                  }`}
-                >
-                  {plan.isPopular && (
-                    <span className="absolute -top-3 left-6 bg-white px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider text-black">
-                      most popular
-                    </span>
-                  )}
+          <div className="mt-12 rounded border border-dashed border-zinc-700 p-6 sm:p-8">
+            <p className="mb-8 text-center text-xs italic text-zinc-600">
+              example preview — not a real plan
+            </p>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {plans.map((plan, i) => (
+                <ScrollReveal key={plan.name} delay={i * 0.12}>
+                  <TiltCard>
+                    <div
+                      className={`relative flex flex-col border bg-zinc-950 p-8 ${
+                        plan.isPopular ? 'border-zinc-600' : 'border-zinc-800'
+                      }`}
+                    >
+                      {plan.isPopular && (
+                        <span className="absolute -top-3 left-6 bg-white px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider text-black">
+                          most popular
+                        </span>
+                      )}
 
-                  <div className="text-xs font-mono uppercase tracking-[0.2em] text-zinc-500">
-                    {plan.name}
-                  </div>
+                      <div className="text-xs font-mono uppercase tracking-[0.2em] text-zinc-500">
+                        {plan.name}
+                      </div>
 
-                  <div className="mt-4 flex items-baseline gap-1.5">
-                    <span className="font-mono text-3xl font-extrabold sm:text-4xl">
-                      {plan.price}
-                    </span>
-                    <span className="font-mono text-sm text-zinc-500">
-                      SOL/{plan.period}
-                    </span>
-                  </div>
+                      <div className="mt-4 flex items-baseline gap-1.5">
+                        <span className="font-mono text-3xl font-extrabold sm:text-4xl">
+                          {plan.price}
+                        </span>
+                        <span className="font-mono text-sm text-zinc-500">
+                          SOL/{plan.period}
+                        </span>
+                      </div>
 
-                  <p className="mt-2 text-xs text-zinc-500">{plan.desc}</p>
+                      <p className="mt-2 text-xs text-zinc-500">{plan.desc}</p>
 
-                  <div className="mt-6 border border-zinc-700 bg-white/[0.02] px-4 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-zinc-300">
-                    subscribe with solana
-                  </div>
+                      <div className="mt-6 border border-zinc-700 bg-white/[0.02] px-4 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-zinc-300">
+                        subscribe with solana
+                      </div>
 
-                  <div className="mt-4 flex items-center gap-2 font-mono text-[11px] text-zinc-600">
-                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500/70" />
-                    {plan.status}
-                  </div>
-                </motion.div>
-              </ScrollReveal>
-            ))}
+                      <div className="mt-4 flex items-center gap-2 font-mono text-[11px] text-zinc-600">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500/70" />
+                        {plan.status}
+                      </div>
+                    </div>
+                  </TiltCard>
+                </ScrollReveal>
+              ))}
+            </div>
           </div>
         </div>
       </div>

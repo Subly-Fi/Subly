@@ -34,6 +34,11 @@ export const metadata: Metadata = {
     site: '@SublyFi',
     creator: '@SublyFi',
   },
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+    ],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
