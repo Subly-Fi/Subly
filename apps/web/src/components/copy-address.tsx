@@ -18,28 +18,31 @@ export function CopyAddress({
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
     } catch {
-      /* clipboard not available */
+      /* fallback: the text is selectable so user can manually copy */
     }
   }, [address]);
 
   return (
-    <button
-      type="button"
-      onClick={handleCopy}
-      className="group inline-flex cursor-pointer items-center gap-2 font-mono text-xs transition-colors"
-    >
+    <div className="inline-flex items-center gap-2 font-mono text-xs">
       <span className="text-zinc-500">{label}</span>
-      <span className="text-zinc-400 transition-colors group-hover:text-white">
+      <code className="select-all text-zinc-400 transition-colors hover:text-white">
         {address}
-      </span>
-      {isCopied ? (
-        <Check size={12} className="shrink-0 text-emerald-400" />
-      ) : (
-        <Copy size={12} className="shrink-0 text-zinc-500 transition-colors group-hover:text-white" />
-      )}
+      </code>
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="shrink-0 cursor-pointer text-zinc-500 transition-colors hover:text-white"
+        aria-label="Copy address"
+      >
+        {isCopied ? (
+          <Check size={14} className="text-emerald-400" />
+        ) : (
+          <Copy size={14} />
+        )}
+      </button>
       {isCopied && (
         <span className="text-[10px] font-semibold text-emerald-400">copied!</span>
       )}
-    </button>
+    </div>
   );
 }
