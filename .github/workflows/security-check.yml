@@ -1,0 +1,57 @@
+name: Security Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  no-private-content:
+    name: Verify no private content leaked
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for _internal/ files
+        run: |
+          if git ls-files | grep -q "^_internal/"; then
+            echo "::error::_internal/ files found in repo!"
+            git ls-files | grep "^_internal/"
+            exit 1
+          fi
+          echo "OK: No _internal/ files"
+
+      - name: Check for private file patterns
+        run: |
+          PATTERNS="DEVLOG\.md$|CLAUDE\.md$|VOICE\.md$|CALENDAR\.md$|CHANNELS\.md$|GUIDELINES\.md$"
+          # TODO.md at root is private; allow it inside packages/subscriptions (upstream)
+          FOUND=$(git ls-files | grep -E "$PATTERNS" | grep -v "^\.cursor/" | grep -v "^packages/subscriptions/" || true)
+          if [ -n "$FOUND" ]; then
+            echo "::error::Private files found in repo!"
+            echo "$FOUND"
+            exit 1
+          fi
+          echo "OK: No private file patterns"
+
+      - name: Check for marketing directories
+        run: |
+          FOUND=$(git ls-files | grep -E "^marketing/|^docs/(roadmap|techStack|codebaseSummary)" || true)
+          if [ -n "$FOUND" ]; then
+            echo "::error::Private directories found in repo!"
+            echo "$FOUND"
+            exit 1
+          fi
+          echo "OK: No private directories"
+
+      - name: Scan commit history for private content
+        run: |
+          # Check all blobs in history for private file names
+          LEAKED=$(git log --all --diff-filter=A --name-only --pretty=format: | grep -E "^(DEVLOG\.md|CLAUDE\.md|TODO\.md|marketing/|docs/roadmap)" | sort -u || true)
+          if [ -n "$LEAKED" ]; then
+            echo "::warning::Private files appeared in git history (may need history rewrite):"
+            echo "$LEAKED"
+          fi
+          echo "OK: History scan complete"

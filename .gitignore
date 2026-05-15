@@ -1,0 +1,56 @@
+# ══════════════════════════════════════════════
+# PRIVATE CONTENT — separate git repo
+# NEVER remove these lines.
+# ══════════════════════════════════════════════
+_internal/
+_internal/**
+CLAUDE.md
+DEVLOG.md
+TODO.md
+VOICE.md
+CALENDAR.md
+CHANNELS.md
+GUIDELINES.md
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+.next/
+.vercel/
+.turbo/
+out/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+!.vscode/settings.json
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+
+# Keys & secrets
+keys/
+*.pem
+*.key
+
+# Solana
+target/
+test-ledger/

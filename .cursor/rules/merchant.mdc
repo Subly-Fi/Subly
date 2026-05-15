@@ -1,0 +1,34 @@
+---
+description: Rules for the merchant dashboard
+globs:
+  - apps/merchant/**
+---
+
+# Merchant Dashboard Rules (apps/merchant)
+
+## Origin
+Forked from `solana-program/subscriptions/webapp`. Keep upstream compatibility where practical.
+
+## Tech Stack
+- Vite + React 19
+- Tailwind CSS 4 + Radix UI
+- TanStack Query for data fetching
+- Jotai for client state
+- react-router for navigation
+- @subscriptions/client for Solana program interaction
+
+## Conventions
+- Routes in `src/routes/`
+- Components in `src/components/` organized by feature
+- Hooks in `src/hooks/`
+- Lib/utils in `src/lib/`
+- Config in `src/config/`
+
+## Rebrand Checklist
+When modifying from upstream, always:
+1. Replace "Subscriptions" / "subscriptions" with "Subly" in user-facing text
+2. Apply Subly color palette (see `_internal/marketing/brand/GUIDELINES.md`)
+3. Keep program interaction logic unchanged — it works with the audited contract
+
+## Key Principle
+The program interaction layer (SDK calls, PDA derivation, transaction building) is battle-tested. Don't modify it unless you understand the security implications. Focus changes on UX, branding, and new features (webhooks, analytics, etc.).

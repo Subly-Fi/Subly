@@ -1,0 +1,51 @@
+---
+description: Rules for marketing content and social media management
+globs:
+  - _internal/marketing/**
+---
+
+# Marketing Rules
+
+## IMPORTANT: This content is PRIVATE
+All marketing/ files live in `_internal/` which is a separate PRIVATE git repo.
+Never reference marketing file contents in public repo commits or code.
+
+## Twitter (@SublyFi)
+- Follow `_internal/marketing/twitter/VOICE.md` for tone and language
+- Follow `_internal/marketing/twitter/CALENDAR.md` for posting schedule
+- Log every published tweet in `_internal/marketing/twitter/history/` as `YYYY-MM-DD-short-title.md`
+- Log every thread in `_internal/marketing/twitter/threads/` as `YYYY-MM-DD-thread-title.md`
+- Keep drafts in `_internal/marketing/twitter/drafts/`
+
+## Tweet History Format
+```markdown
+# YYYY-MM-DD — Short Title
+
+**Tweet:**
+> The actual tweet text here
+
+**Link:** https://twitter.com/SublyFi/status/...
+
+**Metrics** (update after 48h):
+- Impressions:
+- Engagements:
+- Likes:
+- Retweets:
+- Replies:
+```
+
+## Telegram
+- Announcements only in the announcements channel
+- Log in `_internal/marketing/telegram/history/`
+
+## Brand
+- Always reference `_internal/marketing/brand/GUIDELINES.md`
+- Logos in `_internal/marketing/brand/logos/`
+- Colors in `_internal/marketing/brand/colors.md`
+
+## Content Principles
+- Builder-focused, not hype
+- Credit the upstream `solana-program/subscriptions` and Cantina audit
+- Never shill the token
+- Numbers over adjectives
+- Show, don't tell (screenshots, demos, code snippets)

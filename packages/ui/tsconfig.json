@@ -1,0 +1,10 @@
+{
+  "extends": "@subly/config/tsconfig/tsconfig.library.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "jsx": "react-jsx"
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}

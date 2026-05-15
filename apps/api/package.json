@@ -1,0 +1,21 @@
+{
+  "name": "@subly/api",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "clean": "rm -rf dist node_modules .turbo"
+  },
+  "dependencies": {
+    "hono": "^4.7.0",
+    "@hono/node-server": "^1.14.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@subly/config": "workspace:*",
+    "typescript": "^5.8.0",
+    "tsx": "^4.20.0"
+  }
+}

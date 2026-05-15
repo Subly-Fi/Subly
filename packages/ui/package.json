@@ -1,0 +1,36 @@
+{
+  "name": "@subly/ui",
+  "version": "0.0.1",
+  "description": "Embeddable UI components for Subly — Subscribe with Solana button and more",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./globals.css": "./src/globals.css"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist node_modules .turbo"
+  },
+  "dependencies": {
+    "clsx": "^2.1.0",
+    "tailwind-merge": "^3.0.0"
+  },
+  "devDependencies": {
+    "@subly/config": "workspace:*",
+    "@types/react": "^19.1.0",
+    "react": "^19.1.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.0"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0"
+  },
+  "files": ["dist", "src/globals.css"],
+  "license": "MIT"
+}

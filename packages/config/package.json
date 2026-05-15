@@ -1,0 +1,9 @@
+{
+  "name": "@subly/config",
+  "private": true,
+  "version": "0.0.0",
+  "exports": {
+    "./tailwind": "./tailwind.preset.js",
+    "./tsconfig/*.json": "./tsconfig.*.json"
+  }
+}

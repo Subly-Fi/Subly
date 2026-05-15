@@ -1,0 +1,49 @@
+#!/bin/bash
+# ═══════════════════════════════════════════════════════════════
+# FINAL SAFETY NET: Scan everything before it leaves this machine.
+# Runs even if pre-commit was somehow bypassed.
+# ═══════════════════════════════════════════════════════════════
+
+set -euo pipefail
+
+BLOCKED=0
+
+# Check 1: No _internal/ files tracked
+if git ls-files | grep -q "^_internal/"; then
+  echo ""
+  echo "  PUSH BLOCKED: _internal/ files are tracked!"
+  echo ""
+  git ls-files | grep "^_internal/" | sed 's/^/    /'
+  echo ""
+  echo "  Fix: git rm -r --cached _internal/"
+  BLOCKED=1
+fi
+
+# Check 2: No private file patterns tracked
+PRIVATE_PATTERNS="DEVLOG\.md$|TODO\.md$|CLAUDE\.md$|VOICE\.md$|CALENDAR\.md$|CHANNELS\.md$|GUIDELINES\.md$"
+TRACKED_PRIVATE=$(git ls-files | grep -E "$PRIVATE_PATTERNS" | grep -v "^\.cursor/" | grep -v "^packages/subscriptions/" || true)
+if [ -n "$TRACKED_PRIVATE" ]; then
+  echo ""
+  echo "  PUSH BLOCKED: private files are tracked!"
+  echo ""
+  echo "$TRACKED_PRIVATE" | sed 's/^/    /'
+  BLOCKED=1
+fi
+
+# Check 3: No marketing directories tracked
+if git ls-files | grep -qE "^marketing/|^docs/(roadmap|techStack|codebaseSummary)"; then
+  echo ""
+  echo "  PUSH BLOCKED: private directories are tracked!"
+  echo ""
+  git ls-files | grep -E "^marketing/|^docs/(roadmap|techStack|codebaseSummary)" | sed 's/^/    /'
+  BLOCKED=1
+fi
+
+if [ "$BLOCKED" -eq 1 ]; then
+  echo ""
+  echo "  ════════════════════════════════════════"
+  echo "  Private content detected. Push aborted."
+  echo "  ════════════════════════════════════════"
+  echo ""
+  exit 1
+fi

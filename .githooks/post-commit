@@ -1,0 +1,10 @@
+#!/bin/bash
+# Strip AI co-author lines that Cursor IDE injects AFTER commit-msg hook.
+# This amends the commit silently to remove the trailer.
+
+MSG=$(git log -1 --format="%B")
+
+if echo "$MSG" | grep -qiE "Co-authored-by:.*([Cc]ursor|[Cc]laude|[Cc]opilot|cursoragent)"; then
+  CLEAN_MSG=$(echo "$MSG" | grep -viE "Co-authored-by:.*([Cc]ursor|[Cc]laude|[Cc]opilot|cursoragent)" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')
+  git commit --amend --no-verify -m "$CLEAN_MSG" > /dev/null 2>&1
+fi

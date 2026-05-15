@@ -1,0 +1,35 @@
+---
+description: Rules for the subly.fi marketing website
+globs:
+  - apps/web/**
+---
+
+# Web Site Rules (apps/web)
+
+## Tech Stack
+- Next.js 15 with App Router
+- Tailwind CSS 4
+- Framer Motion for animations
+- Server Components by default, client only when interactive
+
+## Conventions
+- Pages in `src/app/` following Next.js App Router conventions
+- Components in `src/components/` — kebab-case files, PascalCase exports
+- Utilities in `src/lib/`
+- Use `cn()` from `@/lib/cn` for class merging
+
+## SEO Requirements
+- Every page needs proper `metadata` export
+- Use `generateMetadata` for dynamic pages
+- OpenGraph images for key pages
+- Structured data (JSON-LD) where appropriate
+
+## Design
+- Pure black background (#000000), white text only — NO gradients, NO color accents
+- Font: Plus Jakarta Sans (sans), JetBrains Mono (code)
+- Monochromatic geek aesthetic: dense info, sharp borders, terminal-inspired
+- See `_internal/marketing/brand/GUIDELINES.md` for full brand guide
+
+## Deploy
+- Vercel
+- Environment variables via Vercel dashboard

@@ -1,0 +1,32 @@
+{
+  "name": "@subly/sdk",
+  "version": "0.0.1",
+  "description": "High-level SDK for Subly — subscriptions and payments on Solana",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist node_modules .turbo"
+  },
+  "dependencies": {
+    "@solana/kit": "^6.8.0"
+  },
+  "devDependencies": {
+    "@subly/config": "workspace:*",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.0"
+  },
+  "peerDependencies": {
+    "@solana/kit": ">=6.0.0"
+  },
+  "files": ["dist"],
+  "license": "MIT"
+}

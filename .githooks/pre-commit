@@ -1,0 +1,66 @@
+#!/bin/bash
+# ═══════════════════════════════════════════════════════════════
+# SECURITY BOUNDARY: Prevent private content in the public repo.
+# DO NOT disable. DO NOT bypass with --no-verify.
+# If this blocks you, ask yourself: "Should this be in _internal/?"
+# ═══════════════════════════════════════════════════════════════
+
+set -euo pipefail
+
+STAGED=$(git diff --cached --name-only 2>/dev/null || true)
+
+if [ -z "$STAGED" ]; then
+  exit 0
+fi
+
+BLOCKED=0
+
+# Layer 1: Direct _internal/ path check
+if echo "$STAGED" | grep -q "^_internal/"; then
+  echo ""
+  echo "  BLOCKED: _internal/ files staged in public repo!"
+  echo ""
+  echo "$STAGED" | grep "^_internal/" | sed 's/^/    /'
+  echo ""
+  echo "  Fix: git reset HEAD _internal/"
+  BLOCKED=1
+fi
+
+# Layer 2: Private file patterns (even if renamed/moved outside _internal/)
+PRIVATE_PATHS="DEVLOG\.md|TODO\.md|CLAUDE\.md|VOICE\.md|CALENDAR\.md|CHANNELS\.md|GUIDELINES\.md"
+PRIVATE_DIRS="marketing/|docs/roadmap|docs/techStack|docs/codebaseSummary"
+COMBINED="$PRIVATE_PATHS|$PRIVATE_DIRS"
+
+MATCHES=$(echo "$STAGED" | grep -E "$COMBINED" | grep -v "^\.cursor/" || true)
+if [ -n "$MATCHES" ]; then
+  echo ""
+  echo "  BLOCKED: private file patterns detected!"
+  echo ""
+  echo "$MATCHES" | sed 's/^/    /'
+  BLOCKED=1
+fi
+
+# Layer 3: Content scanning — check staged file contents for private keywords
+PRIVATE_KEYWORDS="twitter/VOICE|CALENDAR\.md|tweet.*history|marka sesi|content calendar|@SublyFi.*strategy|pump\.fun|FwiaNTvgRCHEZGeKAfwcSE5KDxmh7jJPssT1pWqVpump"
+
+for file in $STAGED; do
+  if git show ":$file" 2>/dev/null | grep -qiE "$PRIVATE_KEYWORDS"; then
+    # Whitelist: cursor rules and README can mention these in passing
+    case "$file" in
+      .cursor/rules/*|README.md|apps/web/src/app/page.tsx|.env.example|.githooks/*|.gitignore|.github/workflows/*|setup.sh) continue ;;
+    esac
+    echo ""
+    echo "  BLOCKED: private keyword found in: $file"
+    BLOCKED=1
+  fi
+done
+
+if [ "$BLOCKED" -eq 1 ]; then
+  echo ""
+  echo "  ════════════════════════════════════════"
+  echo "  These files belong in _internal/ (private repo)."
+  echo "  You are committing to the PUBLIC repo."
+  echo "  ════════════════════════════════════════"
+  echo ""
+  exit 1
+fi

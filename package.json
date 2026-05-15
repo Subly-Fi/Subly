@@ -1,0 +1,21 @@
+{
+  "name": "subly",
+  "private": true,
+  "description": "Solana's commerce layer — subscriptions, delegations, and merchant tools",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,css}\"",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "prettier": "^3.5.0",
+    "turbo": "^2.5.0"
+  },
+  "packageManager": "pnpm@10.30.2",
+  "engines": {
+    "node": ">=20"
+  }
+}

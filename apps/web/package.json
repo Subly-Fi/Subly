@@ -1,0 +1,30 @@
+{
+  "name": "@subly/web",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "clean": "rm -rf .next .turbo node_modules"
+  },
+  "dependencies": {
+    "next": "^15.3.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "framer-motion": "^12.0.0",
+    "lucide-react": "^0.511.0",
+    "clsx": "^2.1.0",
+    "tailwind-merge": "^3.0.0"
+  },
+  "devDependencies": {
+    "@subly/config": "workspace:*",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "typescript": "^5.8.0",
+    "tailwindcss": "^4.1.0",
+    "@tailwindcss/postcss": "^4.1.0",
+    "postcss": "^8.5.0"
+  }
+}

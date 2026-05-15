@@ -1,0 +1,7 @@
+#!/bin/bash
+# Remove any Co-authored-by lines referencing AI tools.
+# Cursor IDE automatically adds these — we strip them silently.
+
+sed -i '' '/^Co-authored-by:.*[Cc]ursor\|[Cc]laude\|[Cc]opilot\|cursoragent/d' "$1"
+# Also remove trailing blank lines
+sed -i '' -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$1"
