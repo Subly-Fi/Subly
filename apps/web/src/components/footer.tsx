@@ -1,5 +1,7 @@
+import { Github } from 'lucide-react';
 import { Marquee } from './marquee';
 import { CopyAddress } from './copy-address';
+import { XIcon, TelegramIcon } from './icons';
 
 export function Footer() {
   return (
@@ -17,32 +19,35 @@ export function Footer() {
               />
             </div>
           </div>
-          <div className="flex items-center gap-8 text-sm text-zinc-500">
+          <div className="flex items-center gap-6 text-zinc-500">
             <a
               href="https://x.com/SublyFi"
               target="_blank"
               rel="noopener noreferrer"
               className="transition-colors hover:text-white"
+              aria-label="X"
             >
-              x
+              <XIcon size={18} />
             </a>
             <a
               href="https://t.me/sublyfi"
               target="_blank"
               rel="noopener noreferrer"
               className="transition-colors hover:text-white"
+              aria-label="Telegram"
             >
-              telegram
+              <TelegramIcon size={18} />
             </a>
             <a
               href="https://github.com/Subly-Fi"
               target="_blank"
               rel="noopener noreferrer"
               className="transition-colors hover:text-white"
+              aria-label="GitHub"
             >
-              github
+              <Github size={18} />
             </a>
-            <span className="font-mono text-zinc-700">2026</span>
+            <span className="font-mono text-sm text-zinc-700">2026</span>
           </div>
         </div>
       </div>

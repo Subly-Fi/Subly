@@ -103,7 +103,7 @@ export function WhatIs() {
 
           <div className="mt-12 rounded border border-dashed border-zinc-700 p-6 sm:p-8">
             <p className="mb-8 text-center text-xs italic text-zinc-600">
-              example preview — not a real plan
+              example preview
             </p>
             <div className="grid gap-4 sm:grid-cols-3">
               {plans.map((plan, i) => (

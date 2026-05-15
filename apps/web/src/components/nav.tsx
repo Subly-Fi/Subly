@@ -1,18 +1,26 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, Github } from 'lucide-react';
 import { ScrollProgress } from './scroll-progress';
+import { XIcon, TelegramIcon } from './icons';
 
-const links = [
+interface NavLink {
+  href: string;
+  label: string;
+  icon?: ReactNode;
+  isExternal?: boolean;
+}
+
+const links: NavLink[] = [
   { href: '#what', label: 'what' },
   { href: '#how', label: 'how' },
   { href: '#for-who', label: 'for who' },
   { href: '#tech', label: 'tech' },
-  { href: 'https://github.com/Subly-Fi', label: 'github', isExternal: true },
-  { href: 'https://x.com/SublyFi', label: 'x', isExternal: true },
-  { href: 'https://t.me/sublyfi', label: 'telegram', isExternal: true },
+  { href: 'https://github.com/Subly-Fi', label: 'github', icon: <Github size={16} />, isExternal: true },
+  { href: 'https://x.com/SublyFi', label: 'x', icon: <XIcon size={16} />, isExternal: true },
+  { href: 'https://t.me/sublyfi', label: 'telegram', icon: <TelegramIcon size={16} />, isExternal: true },
 ];
 
 export function Nav() {
@@ -32,8 +40,9 @@ export function Nav() {
               href={l.href}
               {...(l.isExternal && { target: '_blank', rel: 'noopener noreferrer' })}
               className="text-sm text-zinc-400 transition-colors hover:text-white"
+              aria-label={l.label}
             >
-              {l.label}
+              {l.icon ?? l.label}
             </a>
           ))}
           <a
@@ -53,7 +62,6 @@ export function Nav() {
         </button>
       </div>
 
-      {/* scroll progress bar */}
       <ScrollProgress />
 
       <AnimatePresence>
@@ -72,9 +80,11 @@ export function Nav() {
                   href={l.href}
                   onClick={() => setIsOpen(false)}
                   {...(l.isExternal && { target: '_blank', rel: 'noopener noreferrer' })}
-                  className="block text-sm text-zinc-400 transition-colors hover:text-white"
+                  className="flex items-center gap-2 text-sm text-zinc-400 transition-colors hover:text-white"
+                  aria-label={l.label}
                 >
-                  {l.label}
+                  {l.icon && <span>{l.icon}</span>}
+                  <span>{l.label}</span>
                 </a>
               ))}
               <a

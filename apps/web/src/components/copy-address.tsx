@@ -26,19 +26,19 @@ export function CopyAddress({
     <button
       type="button"
       onClick={handleCopy}
-      className="group inline-flex items-center gap-2 font-mono text-xs transition-colors"
+      className="group inline-flex cursor-pointer items-center gap-2 font-mono text-xs transition-colors"
     >
-      <span className="text-zinc-600">{label}</span>
-      <span className="text-zinc-500 transition-colors group-hover:text-zinc-300">
+      <span className="text-zinc-500">{label}</span>
+      <span className="text-zinc-400 transition-colors group-hover:text-white">
         {address}
       </span>
       {isCopied ? (
         <Check size={12} className="shrink-0 text-emerald-400" />
       ) : (
-        <Copy size={12} className="shrink-0 text-zinc-600 transition-colors group-hover:text-zinc-400" />
+        <Copy size={12} className="shrink-0 text-zinc-500 transition-colors group-hover:text-white" />
       )}
       {isCopied && (
-        <span className="text-[10px] text-emerald-400">copied!</span>
+        <span className="text-[10px] font-semibold text-emerald-400">copied!</span>
       )}
     </button>
   );
