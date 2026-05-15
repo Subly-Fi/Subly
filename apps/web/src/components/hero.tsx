@@ -47,7 +47,7 @@ export function Hero() {
       {/* center glow pulse */}
       <div className="pointer-events-none absolute left-1/2 top-1/2 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/[0.02] blur-[120px]" />
 
-      <div className="relative mx-auto max-w-5xl text-center">
+      <div className="relative z-10 mx-auto max-w-5xl text-center">
         {/* tagline */}
         <motion.p
           initial={{ opacity: 0 }}

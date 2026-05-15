@@ -15,7 +15,7 @@ export function Spotlight({ children }: { children: ReactNode }) {
   return (
     <div ref={ref} onMouseMove={handleMove} className="relative">
       <div
-        className="pointer-events-none fixed inset-0 z-30 transition-opacity duration-300"
+        className="pointer-events-none fixed inset-0 z-0 transition-opacity duration-300"
         style={{
           opacity: isActive ? 1 : 0,
           background: `radial-gradient(600px circle at ${pos.x}px ${pos.y}px, rgba(255,255,255,0.035), transparent 40%)`,

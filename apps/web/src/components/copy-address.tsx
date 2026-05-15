@@ -18,19 +18,28 @@ export function CopyAddress({
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
     } catch {
-      /* fallback: the text is selectable so user can manually copy */
+      /* text is selectable, user can copy manually */
     }
   }, [address]);
 
   return (
-    <div className="inline-flex items-center gap-2 font-mono text-xs">
+    <div
+      className="inline-flex items-center gap-2 font-mono text-xs"
+      style={{ position: 'relative', zIndex: 40 }}
+    >
       <span className="text-zinc-500">{label}</span>
-      <code className="select-all text-zinc-400 transition-colors hover:text-white">
+      <span
+        style={{ userSelect: 'all', WebkitUserSelect: 'all', cursor: 'text' }}
+        className="text-zinc-400 hover:text-white transition-colors"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         {address}
-      </code>
+      </span>
       <button
         type="button"
         onClick={handleCopy}
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{ position: 'relative', zIndex: 41 }}
         className="shrink-0 cursor-pointer text-zinc-500 transition-colors hover:text-white"
         aria-label="Copy address"
       >
