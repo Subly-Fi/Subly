@@ -65,16 +65,25 @@ export function Hero() {
         </BeamReveal>
 
         {/* description */}
-        <motion.p
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, delay: 1.8, ease }}
-          className="mx-auto mt-10 max-w-xl text-base leading-relaxed text-zinc-400 sm:text-lg"
+          className="mx-auto mt-10 max-w-2xl text-base leading-relaxed text-zinc-400 sm:text-lg"
         >
-          recurring payments on solana. no banks. no credit cards. just wallets.
-          <br />
-          merchants get a dashboard. developers get an sdk. users get control.
-        </motion.p>
+          <p>
+            recurring payments on solana.
+            <br />
+            no banks. no credit cards. just wallets.
+          </p>
+          <p className="mt-4">
+            merchants get a dashboard.
+            <br />
+            developers get an sdk.
+            <br />
+            users get control.
+          </p>
+        </motion.div>
 
         {/* CTAs */}
         <motion.div
@@ -104,10 +113,17 @@ export function Hero() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6, delay: 2.6 }}
-          className="mt-14 font-mono text-xs text-zinc-600"
+          className="mt-14 font-mono text-xs"
         >
-          <span>program: </span>
-          <code className="text-zinc-500">De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44</code>
+          <span className="text-zinc-600">solana program </span>
+          <a
+            href="https://explorer.solana.com/address/De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-300 hover:underline"
+          >
+            De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44
+          </a>
         </motion.div>
       </div>
 

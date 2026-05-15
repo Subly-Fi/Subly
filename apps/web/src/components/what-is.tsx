@@ -17,6 +17,33 @@ const stats: Array<{
   { value: 0, label: 'intermediaries', desc: 'wallet to wallet' },
 ];
 
+const plans = [
+  {
+    name: 'weekly',
+    price: '1.5',
+    period: 'week',
+    desc: 'pay as you go. cancel anytime.',
+    status: 'auto-renews in 4d',
+    isPopular: false,
+  },
+  {
+    name: 'monthly',
+    price: '5',
+    period: 'month',
+    desc: 'best for most teams and projects.',
+    status: 'auto-renews in 27d',
+    isPopular: true,
+  },
+  {
+    name: 'yearly',
+    price: '50',
+    period: 'year',
+    desc: 'save 17%. billed once a year.',
+    status: 'auto-renews in 341d',
+    isPopular: false,
+  },
+];
+
 export function WhatIs() {
   return (
     <section id="what" className="border-t border-zinc-800 px-6 py-32">
@@ -60,6 +87,64 @@ export function WhatIs() {
               </motion.div>
             </ScrollReveal>
           ))}
+        </div>
+
+        {/* subscription plans visualization */}
+        <div className="mt-24">
+          <ScrollReveal>
+            <p className="text-xs font-mono uppercase tracking-[0.3em] text-zinc-500">
+              how it looks
+            </p>
+            <h3 className="mt-4 text-2xl font-extrabold tracking-tight sm:text-3xl">
+              subscriptions, powered by your wallet.
+            </h3>
+          </ScrollReveal>
+
+          <div className="mt-12 grid gap-4 sm:grid-cols-3">
+            {plans.map((plan, i) => (
+              <ScrollReveal key={plan.name} delay={i * 0.12}>
+                <motion.div
+                  whileHover={{
+                    boxShadow: '0 0 30px rgba(255,255,255,0.06)',
+                    borderColor: 'rgba(161,161,170,0.4)',
+                  }}
+                  className={`relative flex flex-col border p-8 transition-all duration-300 ${
+                    plan.isPopular ? 'border-zinc-600' : 'border-zinc-800'
+                  }`}
+                >
+                  {plan.isPopular && (
+                    <span className="absolute -top-3 left-6 bg-white px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider text-black">
+                      most popular
+                    </span>
+                  )}
+
+                  <div className="text-xs font-mono uppercase tracking-[0.2em] text-zinc-500">
+                    {plan.name}
+                  </div>
+
+                  <div className="mt-4 flex items-baseline gap-1.5">
+                    <span className="font-mono text-3xl font-extrabold sm:text-4xl">
+                      {plan.price}
+                    </span>
+                    <span className="font-mono text-sm text-zinc-500">
+                      SOL/{plan.period}
+                    </span>
+                  </div>
+
+                  <p className="mt-2 text-xs text-zinc-500">{plan.desc}</p>
+
+                  <div className="mt-6 border border-zinc-700 bg-white/[0.02] px-4 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-zinc-300">
+                    subscribe with solana
+                  </div>
+
+                  <div className="mt-4 flex items-center gap-2 font-mono text-[11px] text-zinc-600">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500/70" />
+                    {plan.status}
+                  </div>
+                </motion.div>
+              </ScrollReveal>
+            ))}
+          </div>
         </div>
       </div>
     </section>

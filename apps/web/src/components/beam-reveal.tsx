@@ -21,11 +21,11 @@ export function BeamReveal({
         {children}
       </div>
 
-      {/* revealed layer — sweeps in from left */}
+      {/* revealed layer — sweeps in from left, extra vertical room for descenders */}
       <motion.div
         className="absolute inset-0 text-white"
-        initial={{ clipPath: 'inset(0 100% 0 0)' }}
-        animate={{ clipPath: 'inset(0 0% 0 0)' }}
+        initial={{ clipPath: 'inset(-15% 100% -15% 0)' }}
+        animate={{ clipPath: 'inset(-15% 0% -15% 0)' }}
         transition={{
           duration,
           delay,
