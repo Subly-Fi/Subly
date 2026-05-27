@@ -1,0 +1,9 @@
+
+signer "payer" "svm::web_wallet" {
+    description = "Pays fees for program deployments and operations"
+}
+
+signer "authority" "svm::squads" {
+    description = "Squads multisig controlling program upgrade authority"
+    address = env.squads_vault_address
+}

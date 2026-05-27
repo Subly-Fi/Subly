@@ -1,0 +1,37 @@
+[package]
+name = "tests-subscriptions"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+
+[lints]
+workspace = true
+
+[dependencies]
+subscriptions = { package = "subscriptions-program", path = "../../program", features = ["no-entrypoint"] }
+pinocchio = { workspace = true }
+pinocchio-associated-token-account = { workspace = true }
+pinocchio-system = { workspace = true }
+pinocchio-token = { workspace = true }
+pinocchio-token-2022 = { workspace = true }
+litesvm = "^0.12"
+litesvm-token = { version = "^0.12", features = ["token-2022"] }
+solana-account = "~3.4"
+solana-clock = "^3"
+solana-instruction = "^3"
+solana-keypair = "=3.1.0"
+solana-message = "^3.1"
+solana-native-token = "^3"
+solana-program-pack = "^3"
+solana-pubkey = "^4"
+solana-signer = "^3"
+solana-transaction = "^3"
+solana-transaction-error = "^3.2"
+spl-associated-token-account-interface = "2.0.0"
+spl-token-2022-interface = "3.0.0"
+spl-token-interface = "2.0.0"
+serde_json = { workspace = true }
+rstest = "0.26"
+tabled = "0.20"
+dtor = "1.0"
