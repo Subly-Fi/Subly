@@ -1,0 +1,1002 @@
+import { useEffect, useMemo, useState } from 'react';
+import {
+    ExternalLink,
+    Clock,
+    Infinity as InfinityIcon,
+    Pencil,
+    Trash2,
+    Sunset,
+    ChevronDown,
+    Lock,
+    Star,
+    Plus,
+    X,
+    RotateCcw,
+} from 'lucide-react';
+import { Badge, Button as SolanaButton, Select, SelectItem, TextInput } from '@solana/design-system';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+} from '@/components/ui/dialog';
+import { ZERO_ADDRESS, PlanStatus } from '@solana/subscriptions';
+import { cn, ellipsify, fmtDate, fmtDateTime, formatPeriod, formatPeriodLabel } from '@/lib/utils';
+import { useSubscriptionsMutations } from '@/hooks/use-subscriptions-mutations';
+import { useSubscriptionAuthorityStatus } from '@/hooks/use-subscription-authority-status';
+import { useTimeTravel } from '@/hooks/use-time-travel';
+import { useWallet } from '@solana/connector/react';
+import { address } from '@solana/kit';
+import { findAssociatedTokenPda } from '@solana-program/token';
+import { useClusterConfig } from '@/hooks/use-cluster-config';
+import { useTokenConfig } from '@/hooks/use-token-config';
+import { resolveTokenProgram } from '@/lib/token-program';
+import type { PlanItem } from '@/hooks/use-plans';
+import { useMySubscriptions, useSubscriberCount } from '@/hooks/use-subscriptions';
+import { PLAN_ICONS, ICON_MAP, parsePlanMeta, type PlanMeta } from '@/lib/plan-constants';
+import { ExplorerLink } from '@/components/cluster/cluster-ui';
+import { formatPlanTokenAmount, resolvePlanTokenDisplay, type PlanTokenDisplay } from '@/lib/token-display';
+
+function ImmutableField({ label, value }: { label: string; value: string }) {
+    return (
+        <div className="grid gap-2">
+            <Label className="flex items-center gap-1.5 text-muted-foreground">
+                <Lock className="h-3 w-3" />
+                {label}
+            </Label>
+            <TextInput value={value} disabled />
+        </div>
+    );
+}
+
+function EditPlanDialog({
+    plan,
+    meta,
+    open,
+    onOpenChange,
+}: {
+    plan: PlanItem;
+    meta: PlanMeta;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+}) {
+    const { updatePlan } = useSubscriptionsMutations();
+    const { getCurrentTimestamp } = useTimeTravel();
+    const isSunset = plan.status === PlanStatus.Sunset;
+    const [blockTime, setBlockTime] = useState<number | undefined>();
+
+    useEffect(() => {
+        if (open)
+            getCurrentTimestamp()
+                .then(setBlockTime)
+                .catch(err => console.error('Failed to fetch block timestamp:', err));
+    }, [open, getCurrentTimestamp]);
+
+    const [planName, setPlanName] = useState(meta.n || '');
+    const [description, setDescription] = useState(meta.d || '');
+    const [selectedIcon, setSelectedIcon] = useState(meta.i || '');
+    const [website, setWebsite] = useState(meta.w || '');
+    const [endDate, setEndDate] = useState(() => {
+        const ts = Number(plan.data.endTs);
+        if (ts === 0) return '';
+        return new Date(ts * 1000).toISOString().slice(0, 10);
+    });
+    const [endHour, setEndHour] = useState(() => {
+        const ts = Number(plan.data.endTs);
+        if (ts === 0) return '12';
+        return new Date(ts * 1000).getHours().toString();
+    });
+    const [sunsetMode, setSunsetMode] = useState(false);
+    const [pullers, setPullers] = useState<string[]>(() => plan.data.pullers.filter(p => p !== ZERO_ADDRESS));
+
+    const addPuller = () => {
+        if (pullers.length < 4) setPullers([...pullers, '']);
+    };
+    const removePuller = (idx: number) => {
+        setPullers(pullers.filter((_, i) => i !== idx));
+    };
+    const updatePuller = (idx: number, val: string) => {
+        const next = [...pullers];
+        next[idx] = val;
+        setPullers(next);
+    };
+
+    const { data: tokens } = useTokenConfig();
+    const token = useMemo(() => resolvePlanTokenDisplay(plan.data.mint, tokens), [plan.data.mint, tokens]);
+    const amount = formatPlanTokenAmount(plan.data.terms.amount, token);
+    const activeDestinations = plan.data.destinations.filter(d => d !== ZERO_ADDRESS);
+
+    const metadataJson = useMemo(() => {
+        const m: Record<string, string> = { n: planName, d: description };
+        if (selectedIcon) m.i = selectedIcon;
+        if (website) m.w = website;
+        return JSON.stringify(m);
+    }, [planName, description, selectedIcon, website]);
+
+    const metadataBytes = useMemo(() => new TextEncoder().encode(metadataJson).length, [metadataJson]);
+
+    const endTsComputed = endDate
+        ? Math.floor(new Date(`${endDate}T${endHour.padStart(2, '0')}:00:00`).getTime() / 1000)
+        : 0;
+    const minEndTs = (blockTime ?? 0) + Number(plan.data.terms.periodHours) * 3600;
+    const isEndDateValid = endTsComputed === 0 || endTsComputed > minEndTs;
+
+    const handleUpdate = () => {
+        const endTs = endTsComputed;
+        const status = sunsetMode ? PlanStatus.Sunset : PlanStatus.Active;
+
+        const filteredPullers = pullers.filter(p => p.length > 0);
+
+        updatePlan.mutate(
+            {
+                planPda: plan.address,
+                status,
+                endTs,
+                metadataUri: metadataJson,
+                pullers: filteredPullers,
+            },
+            { onSuccess: () => onOpenChange(false) },
+        );
+    };
+
+    const isFormValid =
+        planName.length > 0 &&
+        description.length > 0 &&
+        metadataBytes <= 128 &&
+        !(sunsetMode && !endDate) &&
+        isEndDateValid &&
+        (endTsComputed === 0 || blockTime !== undefined);
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-[750px]">
+                <DialogHeader>
+                    <DialogTitle>Edit Plan: {meta.n || 'Unnamed'}</DialogTitle>
+                    <DialogDescription>
+                        Editable fields are highlighted. Greyed out fields are immutable on-chain.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="max-h-[70vh] overflow-y-auto pr-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+                        <div className="sm:col-span-2">
+                            <p className="text-xs font-medium uppercase tracking-wider text-sand-1000">
+                                Metadata (editable)
+                            </p>
+                        </div>
+
+                        <div className="grid gap-2">
+                            <Label htmlFor="edit-name">Plan Name</Label>
+                            <TextInput
+                                id="edit-name"
+                                value={planName}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPlanName(e.target.value)}
+                                disabled={isSunset}
+                            />
+                        </div>
+
+                        <div className="grid gap-2">
+                            <Label htmlFor="edit-desc">Description</Label>
+                            <TextInput
+                                id="edit-desc"
+                                value={description}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDescription(e.target.value)}
+                                disabled={isSunset}
+                            />
+                        </div>
+
+                        <div className="grid gap-2">
+                            <Label>Icon</Label>
+                            <Select
+                                value={selectedIcon || null}
+                                onValueChange={value => setSelectedIcon(value ?? '')}
+                                placeholder="Select an icon"
+                                disabled={isSunset}
+                            >
+                                {PLAN_ICONS.map(({ name, label, icon: Icon }) => (
+                                    <SelectItem key={name} value={name} icon={<Icon />}>
+                                        {label}
+                                    </SelectItem>
+                                ))}
+                            </Select>
+                        </div>
+
+                        <div className="grid gap-2">
+                            <Label htmlFor="edit-website">Website URL</Label>
+                            <TextInput
+                                id="edit-website"
+                                value={website}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWebsite(e.target.value)}
+                                placeholder="https://example.com"
+                                disabled={isSunset}
+                            />
+                        </div>
+
+                        <div className="sm:col-span-2">
+                            <p
+                                className={cn(
+                                    'text-xs text-right',
+                                    metadataBytes > 128 ? 'text-destructive' : 'text-muted-foreground',
+                                )}
+                            >
+                                {metadataBytes}/128 bytes
+                            </p>
+                        </div>
+
+                        <div className="sm:col-span-2 h-px bg-border" />
+
+                        <div className="sm:col-span-2">
+                            <p className="text-xs font-medium uppercase tracking-wider text-sand-1000">
+                                Plan Parameters
+                            </p>
+                        </div>
+
+                        <ImmutableField label="Amount" value={amount} />
+                        <ImmutableField label="Billing Period" value={formatPeriodLabel(plan.data.terms.periodHours)} />
+
+                        <div className="sm:col-span-2 grid gap-2">
+                            <Label>End Date/Time</Label>
+                            <div className="flex gap-2">
+                                <TextInput
+                                    type="date"
+                                    value={endDate}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEndDate(e.target.value)}
+                                    min={new Date(minEndTs * 1000).toLocaleDateString('en-CA')}
+                                    className="flex-1"
+                                    disabled={isSunset}
+                                />
+                                <Select
+                                    value={endHour}
+                                    disabled={isSunset}
+                                    onValueChange={value => {
+                                        if (value) setEndHour(value);
+                                    }}
+                                    className="w-28 shrink-0"
+                                >
+                                    {Array.from({ length: 24 }, (_, i) => (
+                                        <SelectItem key={i} value={i.toString()}>
+                                            {i.toString().padStart(2, '0')}:00
+                                        </SelectItem>
+                                    ))}
+                                </Select>
+                            </div>
+                            {endDate && !isEndDateValid && (
+                                <p className="text-xs text-destructive">
+                                    End date must be at least one billing period from now
+                                </p>
+                            )}
+                            <p className="text-xs text-muted-foreground">Leave empty for no end date</p>
+                        </div>
+
+                        <div className="sm:col-span-2 grid gap-2">
+                            <Label className="flex items-center gap-1.5 text-muted-foreground">
+                                <Lock className="h-3 w-3" />
+                                Destinations
+                            </Label>
+                            {activeDestinations.length > 0 ? (
+                                activeDestinations.map((d, i) => (
+                                    <TextInput key={i} value={ellipsify(d, 8)} disabled inputClassName="font-mono" />
+                                ))
+                            ) : (
+                                <p className="text-sm text-muted-foreground/60 italic">
+                                    Any destination (not restricted)
+                                </p>
+                            )}
+                        </div>
+
+                        <div className="sm:col-span-2 grid gap-2">
+                            <Label>
+                                Pullers <span className="text-muted-foreground font-normal">(optional, max 4)</span>
+                            </Label>
+                            {pullers.map((addr, i) => (
+                                <div key={i} className="flex gap-2">
+                                    <TextInput
+                                        value={addr}
+                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                            updatePuller(i, e.target.value)
+                                        }
+                                        placeholder="Solana address"
+                                        className="flex-1"
+                                        inputClassName="font-mono"
+                                        disabled={isSunset}
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => removePuller(i)}
+                                        disabled={isSunset}
+                                        className="shrink-0 text-muted-foreground hover:text-destructive"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            ))}
+                            {pullers.length < 4 && !isSunset && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={addPuller}
+                                    className="w-fit gap-1"
+                                >
+                                    <Plus className="h-3 w-3" /> Add
+                                </Button>
+                            )}
+                            <p className="text-xs text-muted-foreground">
+                                Addresses allowed to pull from this plan (empty = owner only)
+                            </p>
+                        </div>
+
+                        <div className="sm:col-span-2 h-px bg-border" />
+
+                        {!isSunset && (
+                            <div className="sm:col-span-2 flex items-center gap-2 p-3 rounded-lg border border-amber-300 bg-amber-50">
+                                <input
+                                    type="checkbox"
+                                    id="sunset-check"
+                                    checked={sunsetMode}
+                                    onChange={e => setSunsetMode(e.target.checked)}
+                                    className="accent-amber-500"
+                                />
+                                <Label htmlFor="sunset-check" className="text-amber-600 text-sm cursor-pointer">
+                                    Sunset this plan (terminal, stops new subscriptions)
+                                </Label>
+                            </div>
+                        )}
+                        {sunsetMode && !endDate && (
+                            <div className="sm:col-span-2">
+                                <p className="text-xs text-red-600">Sunset requires an end date.</p>
+                            </div>
+                        )}
+                        {isSunset && (
+                            <div className="sm:col-span-2 p-3 rounded-lg border border-amber-300 bg-amber-50">
+                                <p className="text-sm text-amber-600">
+                                    This plan is in Sunset status. No further edits are allowed.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <DialogFooter className="mt-4">
+                    <Button variant="outline" onClick={() => onOpenChange(false)}>
+                        Cancel
+                    </Button>
+                    <SolanaButton
+                        onClick={handleUpdate}
+                        disabled={updatePlan.isPending || isSunset || !isFormValid}
+                        loading={updatePlan.isPending}
+                    >
+                        Update Plan
+                    </SolanaButton>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function DeletePlanDialog({
+    plan,
+    meta,
+    open,
+    onOpenChange,
+}: {
+    plan: PlanItem;
+    meta: PlanMeta;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+}) {
+    const { deletePlan } = useSubscriptionsMutations();
+    const { getCurrentTimestamp } = useTimeTravel();
+    const endTs = Number(plan.data.endTs);
+    const [canDelete, setCanDelete] = useState(false);
+
+    useEffect(() => {
+        if (!open || endTs === 0) return;
+        getCurrentTimestamp()
+            .then(bt => {
+                setCanDelete(bt > endTs);
+            })
+            .catch(err => console.error('Failed to fetch block timestamp:', err));
+    }, [open, endTs, getCurrentTimestamp]);
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="border-red-300 bg-bg1">
+                <DialogHeader>
+                    <DialogTitle className="text-red-600">Delete Plan: {meta.n || 'Unnamed'}</DialogTitle>
+                    <DialogDescription>
+                        {canDelete
+                            ? 'This plan has expired. Deleting will close the account and return rent to your wallet.'
+                            : 'This plan cannot be deleted yet. A plan must have an end date that has passed before it can be deleted.'}
+                    </DialogDescription>
+                </DialogHeader>
+                {!canDelete && (
+                    <div className="text-sm text-sand-1100 space-y-1 p-3 rounded-lg border border-sand-300 bg-sand-100">
+                        {endTs === 0 ? (
+                            <p>This plan has no expiry. Set an end date via Edit first, then wait for it to expire.</p>
+                        ) : (
+                            <p>This plan expires on {fmtDateTime(endTs)}. You can delete it after that.</p>
+                        )}
+                    </div>
+                )}
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => onOpenChange(false)}>
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="destructive"
+                        onClick={() =>
+                            deletePlan.mutate({ planPda: plan.address }, { onSuccess: () => onOpenChange(false) })
+                        }
+                        disabled={!canDelete || deletePlan.isPending}
+                    >
+                        {deletePlan.isPending ? 'Deleting...' : 'Delete Plan'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function SubscribeDialog({
+    plan,
+    meta,
+    token,
+    open,
+    onOpenChange,
+}: {
+    plan: PlanItem;
+    meta: PlanMeta;
+    token: PlanTokenDisplay;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+}) {
+    const { subscribe, initSubscriptionAuthority } = useSubscriptionsMutations();
+    const {
+        data: statusData,
+        isInitialized,
+        isLoading: statusLoading,
+        refetch: refetchStatus,
+    } = useSubscriptionAuthorityStatus(plan.data.mint);
+    const { account } = useWallet();
+    const { url: rpcUrl } = useClusterConfig();
+    const amount = formatPlanTokenAmount(plan.data.terms.amount, token);
+    const authorityInitId = statusData?.data?.initId;
+
+    const handleInit = async () => {
+        if (!account) return;
+        const mint = address(plan.data.mint);
+        const tokenProgram = await resolveTokenProgram(rpcUrl, mint);
+        const [userAta] = await findAssociatedTokenPda({
+            mint,
+            owner: address(account),
+            tokenProgram,
+        });
+        initSubscriptionAuthority.mutate(
+            {
+                tokenMint: plan.data.mint,
+                userAta: userAta,
+                tokenProgram,
+            },
+            { onSuccess: () => refetchStatus() },
+        );
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Subscribe to: {meta.n || 'Unnamed'}</DialogTitle>
+                    <DialogDescription>
+                        {amount} / {formatPeriod(plan.data.terms.periodHours)} from merchant {ellipsify(plan.owner, 4)}
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="rounded-lg border border-sand-200 bg-sand-100 px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                        <span className="text-sand-1000">Token</span>
+                        <span className="font-medium text-foreground">{token.symbol}</span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-3">
+                        <span className="text-sand-1000">Mint</span>
+                        <ExplorerLink
+                            address={plan.data.mint}
+                            label={ellipsify(plan.data.mint, 4)}
+                            className="font-mono text-xs text-foreground hover:text-sand-1100 no-underline"
+                        />
+                    </div>
+                </div>
+
+                {token.decimals == null && (
+                    <div className="text-sm text-amber-600 p-3 rounded-lg border border-amber-300 bg-amber-50">
+                        This token is not configured for the selected network. Review the raw amount and mint before
+                        subscribing.
+                    </div>
+                )}
+
+                {statusLoading ? (
+                    <div className="text-sm text-muted-foreground animate-pulse py-4 text-center">
+                        Checking wallet status...
+                    </div>
+                ) : !isInitialized ? (
+                    <div className="space-y-3">
+                        <div className="text-sm text-amber-600 p-3 rounded-lg border border-amber-300 bg-amber-50">
+                            Your SubscriptionAuthority account must be initialized for this token before subscribing.
+                        </div>
+                        <SolanaButton
+                            onClick={handleInit}
+                            disabled={initSubscriptionAuthority.isPending}
+                            loading={initSubscriptionAuthority.isPending}
+                            style={{ width: '100%' }}
+                        >
+                            Initialize SubscriptionAuthority
+                        </SolanaButton>
+                    </div>
+                ) : (
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => onOpenChange(false)}>
+                            Cancel
+                        </Button>
+                        <SolanaButton
+                            onClick={() => {
+                                if (authorityInitId == null) return;
+                                subscribe.mutate(
+                                    {
+                                        merchant: plan.owner,
+                                        planId: plan.data.planId,
+                                        tokenMint: plan.data.mint,
+                                        expectedAmount: plan.data.terms.amount,
+                                        expectedPeriodHours: plan.data.terms.periodHours,
+                                        expectedCreatedAt: plan.data.terms.createdAt,
+                                        expectedSubscriptionAuthorityInitId: authorityInitId,
+                                    },
+                                    { onSuccess: () => onOpenChange(false) },
+                                );
+                            }}
+                            disabled={subscribe.isPending || authorityInitId == null}
+                            loading={subscribe.isPending}
+                        >
+                            Subscribe
+                        </SolanaButton>
+                    </DialogFooter>
+                )}
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function PlanExpandedDetails({ plan, isExpanded }: { plan: PlanItem; isExpanded: boolean }) {
+    const activeDestinations = plan.data.destinations.filter(d => d !== ZERO_ADDRESS);
+    const activePullers = plan.data.pullers.filter(p => p !== ZERO_ADDRESS);
+
+    return (
+        <div
+            className="overflow-hidden transition-all ease-[cubic-bezier(0.4,0,0.2,1)]"
+            style={{
+                maxHeight: isExpanded ? 600 : 0,
+                opacity: isExpanded ? 1 : 0,
+                transitionDuration: isExpanded ? '700ms' : '500ms',
+            }}
+        >
+            <div
+                className="h-px bg-gradient-to-r from-transparent via-sand-300 to-transparent my-5 transition-all duration-1000 ease-out"
+                style={{ width: isExpanded ? '100%' : '0%', opacity: isExpanded ? 1 : 0 }}
+            />
+
+            <div
+                className={cn(
+                    'transition-all duration-700 delay-150 ease-out',
+                    isExpanded ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0',
+                )}
+            >
+                <p className="text-[11px] font-semibold text-sand-1000 uppercase tracking-[0.15em] mb-2.5">
+                    Destinations
+                </p>
+                {activeDestinations.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                        {activeDestinations.map(d => (
+                            <ExplorerLink
+                                key={d}
+                                address={d}
+                                label={ellipsify(d, 6)}
+                                className="bg-card hover:bg-sand-100 border border-sand-300 hover:border-sand-400 px-3 py-1.5 rounded-lg font-mono text-xs text-foreground transition-all duration-300 no-underline"
+                            />
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-sm text-sand-1000/70 italic pl-1">Any destination (unrestricted)</p>
+                )}
+            </div>
+
+            <div
+                className={cn(
+                    'transition-all duration-700 delay-300 ease-out mt-4',
+                    isExpanded ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0',
+                )}
+            >
+                <p className="text-[11px] font-semibold text-sand-1000 uppercase tracking-[0.15em] mb-2.5">Pullers</p>
+                {activePullers.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                        {activePullers.map(p => (
+                            <ExplorerLink
+                                key={p}
+                                address={p}
+                                label={ellipsify(p, 6)}
+                                className="bg-card hover:bg-sand-100 border border-sand-300 hover:border-sand-400 px-3 py-1.5 rounded-lg font-mono text-xs text-foreground transition-all duration-300 no-underline"
+                            />
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-sm text-sand-1000/70 italic pl-1">Owner only</p>
+                )}
+            </div>
+
+            <div
+                className={cn(
+                    'transition-all duration-700 delay-[450ms] ease-out mt-4',
+                    isExpanded ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0',
+                )}
+            >
+                <p className="text-[11px] font-semibold text-sand-1000 uppercase tracking-[0.15em] mb-2.5">
+                    On-chain Details
+                </p>
+                <div className="grid grid-cols-1 gap-2.5">
+                    <div className="flex items-center justify-between bg-sand-100 rounded-lg px-3 py-2 border border-sand-200 hover:border-sand-300 transition-colors">
+                        <p className="text-[11px] text-sand-1000 uppercase tracking-wider">Plan ID</p>
+                        <p className="font-mono text-sm text-foreground">{Number(plan.data.planId)}</p>
+                    </div>
+                    <div className="flex items-center justify-between bg-sand-100 rounded-lg px-3 py-2 border border-sand-200 hover:border-sand-300 transition-colors">
+                        <p className="text-[11px] text-sand-1000 uppercase tracking-wider">Token Mint</p>
+                        <ExplorerLink
+                            address={plan.data.mint}
+                            label={ellipsify(plan.data.mint, 4)}
+                            className="font-mono text-sm text-foreground hover:text-sand-1100 no-underline"
+                        />
+                    </div>
+                    <div className="flex items-center justify-between bg-sand-100 rounded-lg px-3 py-2 border border-sand-200 hover:border-sand-300 transition-colors">
+                        <p className="text-[11px] text-sand-1000 uppercase tracking-wider">Period</p>
+                        <p className="font-mono text-sm text-foreground">
+                            {formatPeriodLabel(plan.data.terms.periodHours)}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export function PlanCard({
+    plan,
+    variant = 'owner',
+    isExpanded = false,
+    onToggleExpand,
+}: {
+    plan: PlanItem;
+    variant?: 'owner' | 'marketplace';
+    isExpanded?: boolean;
+    onToggleExpand?: () => void;
+}) {
+    const [editOpen, setEditOpen] = useState(false);
+    const [deleteOpen, setDeleteOpen] = useState(false);
+    const [subscribeOpen, setSubscribeOpen] = useState(false);
+    const { resumeSubscription } = useSubscriptionsMutations();
+    const { data: mySubscriptions } = useMySubscriptions();
+    const matchingSub = useMemo(
+        () => mySubscriptions?.find(s => s.subscription.header.delegatee === plan.address) ?? null,
+        [mySubscriptions, plan.address],
+    );
+    const isSubscribed = !!matchingSub;
+    const subExpiresAtTs = matchingSub ? Number(matchingSub.subscription.expiresAtTs) : 0;
+    const isCancelledSub = isSubscribed && subExpiresAtTs > 0;
+    const isGhostSubscription =
+        matchingSub != null &&
+        (plan.data.terms.amount !== matchingSub.subscription.terms.amount ||
+            plan.data.terms.periodHours !== matchingSub.subscription.terms.periodHours ||
+            plan.data.terms.createdAt !== matchingSub.subscription.terms.createdAt);
+    const [subDaysLeft, setSubDaysLeft] = useState<number | null>(null);
+    const canResumeSubscription = isCancelledSub && !isGhostSubscription && subDaysLeft !== null && subDaysLeft > 0;
+
+    const meta = useMemo(() => parsePlanMeta(plan.data.metadataUri), [plan.data.metadataUri]);
+    const { data: tokens } = useTokenConfig();
+    const token = useMemo(() => resolvePlanTokenDisplay(plan.data.mint, tokens), [plan.data.mint, tokens]);
+
+    const Icon = (meta.i && ICON_MAP[meta.i]) || Star;
+    const amount = formatPlanTokenAmount(plan.data.terms.amount, token);
+    const period = formatPeriod(plan.data.terms.periodHours);
+    const activeDestinations = plan.data.destinations.filter(d => d !== ZERO_ADDRESS).length;
+    const activePullers = plan.data.pullers.filter(p => p !== ZERO_ADDRESS).length;
+    const { data: subscriberCount } = useSubscriberCount(variant === 'owner' ? plan.address : null);
+    const { getCurrentTimestamp } = useTimeTravel();
+    const hasExpiry = Number(plan.data.endTs) > 0;
+    const isSunset = plan.status === PlanStatus.Sunset;
+    const [planExpired, setIsExpired] = useState(false);
+
+    const [sunsetIntensity, setSunsetIntensity] = useState(0);
+
+    useEffect(() => {
+        if (!hasExpiry) return;
+        const endTs = Number(plan.data.endTs);
+        getCurrentTimestamp()
+            .then(blockTime => {
+                setIsExpired(blockTime > endTs);
+                if (isSunset) {
+                    const totalWindow = 30 * 24 * 3600;
+                    const remaining = endTs - blockTime;
+                    setSunsetIntensity(remaining <= 0 ? 1 : Math.max(0, Math.min(1, 1 - remaining / totalWindow)));
+                }
+            })
+            .catch(err => console.error('Failed to fetch block timestamp:', err));
+    }, [hasExpiry, isSunset, plan.data.endTs, getCurrentTimestamp]);
+
+    useEffect(() => {
+        if (!isCancelledSub) return;
+        getCurrentTimestamp()
+            .then(bt => {
+                const secsLeft = subExpiresAtTs - bt;
+                setSubDaysLeft(secsLeft <= 0 ? 0 : Math.ceil(secsLeft / 86400));
+            })
+            .catch(err => console.error('Failed to fetch block timestamp:', err));
+    }, [isCancelledSub, subExpiresAtTs, getCurrentTimestamp]);
+
+    const overlayStyle = planExpired
+        ? {
+              background:
+                  'linear-gradient(to bottom, rgba(239, 68, 68, 0.18) 0%, rgba(185, 28, 28, 0.10) 40%, transparent 75%)',
+          }
+        : isSunset
+          ? {
+                background: `linear-gradient(to bottom, rgba(245, 158, 11, ${0.08 + sunsetIntensity * 0.2}) 0%, rgba(234, 88, 12, ${sunsetIntensity * 0.12}) 40%, transparent 75%)`,
+            }
+          : undefined;
+
+    const borderClass = planExpired
+        ? 'border border-red-300'
+        : isSunset
+          ? 'border border-amber-300'
+          : 'border-0 border-all-dashed-medium';
+
+    return (
+        <>
+            <Card
+                className={cn(
+                    'w-full bg-card transition-all duration-300 rounded-2xl relative overflow-hidden',
+                    borderClass,
+                )}
+            >
+                {overlayStyle && (
+                    <div className="absolute inset-0 pointer-events-none rounded-2xl" style={overlayStyle} />
+                )}
+                <CardContent className="p-6 space-y-5 relative z-10">
+                    <div
+                        className={cn(variant === 'owner' && onToggleExpand && 'cursor-pointer')}
+                        onClick={variant === 'owner' ? onToggleExpand : undefined}
+                    >
+                        <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-start gap-3.5 min-w-0">
+                                <div className="rounded-xl bg-sand-100 p-3 shrink-0 ring-1 ring-sand-300">
+                                    <Icon className="h-6 w-6 text-foreground" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="font-bold text-lg text-foreground tracking-tight truncate">
+                                        {meta.n || 'Unnamed Plan'}
+                                    </p>
+                                    <p className="text-sm text-sand-1100 truncate mt-0.5">
+                                        {meta.d || 'No description'}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                {isSunset && (
+                                    <Badge variant="warning" className="shrink-0">
+                                        <Sunset className="h-3 w-3 mr-1" />
+                                        Sunset
+                                    </Badge>
+                                )}
+                                {variant === 'owner' && onToggleExpand && (
+                                    <ChevronDown
+                                        className={cn(
+                                            'h-4 w-4 text-sand-1000 transition-transform duration-500 ease-out shrink-0',
+                                            isExpanded && 'rotate-180',
+                                        )}
+                                    />
+                                )}
+                            </div>
+                        </div>
+
+                        <div>
+                            <div className="flex flex-wrap items-baseline gap-1.5">
+                                <span className="min-w-0 text-xl sm:text-2xl lg:text-3xl font-semibold text-foreground tracking-tight break-words leading-tight">
+                                    {amount}
+                                </span>
+                                <span className="text-base font-medium text-sand-1000">/{period}</span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                <div
+                                    className={cn(
+                                        'flex items-center gap-1.5 text-sm px-3 py-1 rounded-lg border',
+                                        token.decimals != null
+                                            ? 'font-medium text-foreground bg-sand-200 border-sand-300'
+                                            : 'text-amber-700 bg-amber-50 border-amber-300',
+                                    )}
+                                >
+                                    <span>{token.symbol}</span>
+                                    <ExplorerLink
+                                        address={plan.data.mint}
+                                        label={ellipsify(plan.data.mint, 4)}
+                                        className="font-mono text-xs text-current hover:text-sand-1100 no-underline"
+                                    />
+                                </div>
+                                {hasExpiry ? (
+                                    planExpired ? (
+                                        <div className="flex items-center gap-1.5 text-sm text-red-700 bg-red-100 px-3 py-1 rounded-lg border border-red-300">
+                                            <Clock className="h-3.5 w-3.5 text-red-600" />
+                                            <span>Expired {fmtDate(Number(plan.data.endTs))}</span>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-1.5 text-sm text-sand-1400 bg-sand-200 px-3 py-1 rounded-lg border border-sand-200">
+                                            <Clock className="h-3.5 w-3.5 text-sand-1100" />
+                                            <span>Expires {fmtDate(Number(plan.data.endTs))}</span>
+                                        </div>
+                                    )
+                                ) : (
+                                    <div className="flex items-center gap-1.5 text-sm font-medium text-foreground bg-sand-200 px-3 py-1 rounded-lg border border-sand-300">
+                                        <InfinityIcon className="h-4 w-4" />
+                                        <span>No expiry</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {variant === 'owner' && (
+                            <div className="flex items-center gap-4 text-sm text-sand-1100">
+                                <span>
+                                    <span className="font-semibold text-foreground">{subscriberCount ?? 0}</span>{' '}
+                                    subscriber{subscriberCount !== 1 ? 's' : ''}
+                                </span>
+                                <span className="text-sand-300">|</span>
+                                <span>
+                                    <span className="font-semibold text-foreground">{activeDestinations}</span> dest.
+                                </span>
+                                <span className="text-sand-300">|</span>
+                                <span>
+                                    <span className="font-semibold text-foreground">{activePullers}</span> puller
+                                    {activePullers !== 1 ? 's' : ''}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+
+                    {variant === 'owner' && <PlanExpandedDetails plan={plan} isExpanded={isExpanded} />}
+
+                    {variant === 'marketplace' && token.decimals == null && (
+                        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-700">
+                            This token is not configured for this network. Amounts are shown in raw units.
+                        </div>
+                    )}
+
+                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-sand-200">
+                        <span className="font-mono text-xs text-sand-1000 break-all leading-relaxed">
+                            {plan.address}
+                        </span>
+                        {variant === 'marketplace' && meta.w && (
+                            <a
+                                href={meta.w}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 text-sm text-foreground hover:text-sand-1100 transition-colors shrink-0"
+                            >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                Website
+                            </a>
+                        )}
+                    </div>
+
+                    {variant === 'marketplace' && (
+                        <div className="flex justify-center pt-2 border-t border-sand-200">
+                            {canResumeSubscription && matchingSub ? (
+                                <SolanaButton
+                                    size="sm"
+                                    onClick={(e: React.MouseEvent) => {
+                                        e.stopPropagation();
+                                        resumeSubscription.mutate({
+                                            planPda: plan.address,
+                                            subscriptionPda: matchingSub.address,
+                                        });
+                                    }}
+                                    disabled={resumeSubscription.isPending}
+                                    loading={resumeSubscription.isPending}
+                                    iconLeft={<RotateCcw />}
+                                    style={{ width: '100%' }}
+                                >
+                                    Resume Subscription
+                                </SolanaButton>
+                            ) : isCancelledSub ? (
+                                <Badge variant="danger" className="w-full justify-center" style={{ height: '2.25rem' }}>
+                                    Cancelled{' '}
+                                    {subDaysLeft !== null && subDaysLeft > 0
+                                        ? `\u2014 ${subDaysLeft} days until revoke`
+                                        : ''}
+                                </Badge>
+                            ) : isSubscribed ? (
+                                <Badge
+                                    variant="warning"
+                                    className="w-full justify-center"
+                                    style={{ height: '2.25rem' }}
+                                >
+                                    Already Subscribed
+                                </Badge>
+                            ) : (
+                                <SolanaButton
+                                    size="sm"
+                                    onClick={(e: React.MouseEvent) => {
+                                        e.stopPropagation();
+                                        setSubscribeOpen(true);
+                                    }}
+                                    disabled={isSunset || planExpired}
+                                    style={{ width: '100%' }}
+                                >
+                                    Subscribe
+                                </SolanaButton>
+                            )}
+                        </div>
+                    )}
+
+                    {variant === 'owner' && (
+                        <div className="flex items-center gap-2 pt-2 border-t border-sand-200">
+                            {!planExpired && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={(e: React.MouseEvent) => {
+                                        e.stopPropagation();
+                                        setEditOpen(true);
+                                    }}
+                                    disabled={isSunset}
+                                    className="flex-1 border-foreground bg-foreground text-background hover:bg-foreground/90"
+                                >
+                                    <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                                    Edit
+                                </Button>
+                            )}
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e: React.MouseEvent) => {
+                                    e.stopPropagation();
+                                    setDeleteOpen(true);
+                                }}
+                                className="flex-1 border-red-300 text-red-600 hover:bg-red-100 hover:text-red-700"
+                            >
+                                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                                Delete
+                            </Button>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            {variant === 'owner' && (
+                <>
+                    <EditPlanDialog plan={plan} meta={meta} open={editOpen} onOpenChange={setEditOpen} />
+                    <DeletePlanDialog plan={plan} meta={meta} open={deleteOpen} onOpenChange={setDeleteOpen} />
+                </>
+            )}
+            {variant === 'marketplace' && (
+                <SubscribeDialog
+                    plan={plan}
+                    meta={meta}
+                    token={token}
+                    open={subscribeOpen}
+                    onOpenChange={setSubscribeOpen}
+                />
+            )}
+        </>
+    );
+}
