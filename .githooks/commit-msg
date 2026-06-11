@@ -1,7 +1,12 @@
 #!/bin/bash
 # Remove any Co-authored-by lines referencing AI tools.
 # Cursor IDE automatically adds these — we strip them silently.
+# Portable across BSD (macOS) and GNU (Linux) sed: -i with a backup suffix.
 
-sed -i '' '/^Co-authored-by:.*[Cc]ursor\|[Cc]laude\|[Cc]opilot\|cursoragent/d' "$1"
+sed -i.bak '/^Co-authored-by:.*\([Cc]ursor\|[Cc]laude\|[Cc]opilot\|cursoragent\)/d' "$1" 2>/dev/null \
+  || sed -i.bak -E '/^Co-authored-by:.*([Cc]ursor|[Cc]laude|[Cc]opilot|cursoragent)/d' "$1"
+rm -f "$1.bak"
+
 # Also remove trailing blank lines
-sed -i '' -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$1"
+sed -i.bak -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$1"
+rm -f "$1.bak"

@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate subscriptions client
+        working-directory: packages/subscriptions
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm tsx scripts/generate-ts-client.ts
+          cd clients/typescript && pnpm build
+
+      - name: Build packages
+        run: |
+          pnpm --filter @subly/sdk build
+          pnpm --filter @subly/ui build
+
+      - name: Build apps
+        run: |
+          pnpm --filter @subly/web build
+          pnpm --filter @subly/merchant build
+          pnpm --filter @subly/api build
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint web
+        run: pnpm --filter @subly/web lint
+
+      - name: Format check
+        run: pnpm format:check
+
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate subscriptions client
+        working-directory: packages/subscriptions
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm tsx scripts/generate-ts-client.ts
+          cd clients/typescript && pnpm build
+
+      - name: Type check API
+        run: pnpm --filter @subly/api build

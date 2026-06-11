@@ -9,13 +9,23 @@
     "clean": "rm -rf dist node_modules .turbo"
   },
   "dependencies": {
-    "hono": "^4.7.0",
     "@hono/node-server": "^1.14.0",
+    "@solana-program/token": "^0.13.0",
+    "@solana/kit": "^6.9.0",
+    "@subscriptions/client": "link:../../packages/subscriptions/clients/typescript",
+    "@supabase/supabase-js": "^2.106.2",
+    "@upstash/qstash": "^2.11.0",
+    "bs58": "^6.0.0",
+    "hono": "^4.7.0",
+    "jose": "^6.2.3",
+    "resend": "^6.12.4",
+    "tweetnacl": "^1.0.3",
     "zod": "^3.25.0"
   },
   "devDependencies": {
     "@subly/config": "workspace:*",
-    "typescript": "^5.8.0",
-    "tsx": "^4.20.0"
+    "@types/node": "^24.12.4",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.0"
   }
 }

@@ -32,8 +32,9 @@ out/
 .DS_Store
 Thumbs.db
 
-# IDE
+# IDE / local agent settings
 .cursor/
+.claude/
 .vscode/
 !.vscode/settings.json
 *.swp
