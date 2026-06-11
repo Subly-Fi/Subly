@@ -52,6 +52,8 @@ impl TryFrom<u32> for SubscriptionsError {
             134 => Ok(Self::MigrationRequired),
             135 => Ok(Self::DelegationAlreadyExists),
             136 => Ok(Self::StaleSubscriptionAuthority),
+            137 => Ok(Self::TransferHookTooManyAccounts),
+            138 => Ok(Self::TransferHookValidationAccountMissing),
             // Fixed delegation errors (300-399)
             300 => Ok(Self::AmountExceedsLimit),
             301 => Ok(Self::FixedDelegationExpiryInPast),
@@ -65,6 +67,7 @@ impl TryFrom<u32> for SubscriptionsError {
             405 => Ok(Self::RecurringDelegationStartTimeGreaterThanExpiry),
             406 => Ok(Self::RecurringDelegationAmountZero),
             407 => Ok(Self::DelegationNotStarted),
+            408 => Ok(Self::RecurringDelegationStartOnLandingRequiresExpiry),
             // Plan and subscription errors (500-599)
             500 => Ok(Self::PlanSunset),
             501 => Ok(Self::PlanExpired),
@@ -182,6 +185,10 @@ pub enum SubscriptionsError {
     DelegationAlreadyExists,
     #[error("Delegation init_id does not match current SubscriptionAuthority")]
     StaleSubscriptionAuthority,
+    #[error("Too many transfer hook accounts provided")]
+    TransferHookTooManyAccounts,
+    #[error("Transfer hook validation account missing from provided accounts")]
+    TransferHookValidationAccountMissing,
 
     // --- Fixed delegation errors (300--399) ---
     #[error("Transfer amount exceeds delegation limit")]
@@ -208,6 +215,8 @@ pub enum SubscriptionsError {
     RecurringDelegationAmountZero,
     #[error("Delegation period has not started yet")]
     DelegationNotStarted,
+    #[error("start_ts of 0 (start on landing) requires a non-zero expiry")]
+    RecurringDelegationStartOnLandingRequiresExpiry,
 
     // --- Plan and subscription errors (500--599) ---
     #[error("Plan is in sunset status")]

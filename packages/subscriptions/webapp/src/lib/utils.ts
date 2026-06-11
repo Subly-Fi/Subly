@@ -3,8 +3,6 @@ import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import type { QueryClient } from '@tanstack/react-query';
 
-export const USDC_DECIMALS = 6;
-export const USDC_MULTIPLIER = 10 ** USDC_DECIMALS;
 export const SECONDS_PER_DAY = 86400;
 
 const TIME_DRIFT_ALLOWED_SECS = 120;
@@ -13,6 +11,10 @@ export function isExpired(expiryTs: bigint, nowSec?: number): boolean {
     if (expiryTs === 0n) return false;
     const now = nowSec ?? Math.floor(Date.now() / 1000);
     return Number(expiryTs) + TIME_DRIFT_ALLOWED_SECS < now;
+}
+
+export function isStillCollectibleSubscription(expiresAtTs: bigint, nowSec?: number): boolean {
+    return !isExpired(expiresAtTs, nowSec);
 }
 
 export function cn(...inputs: ClassValue[]) {

@@ -8,6 +8,7 @@ import {
     useWallet,
     useWalletConnectors,
     useWalletInfo,
+    type SolanaCluster,
     type SolanaClusterId,
 } from '@solana/connector/react';
 import { Button } from '@solana/design-system';
@@ -22,6 +23,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { readCustomRpc } from '@/lib/custom-rpc';
 import { ellipsify } from '@/lib/utils';
 
 function defaultClusterId(): SolanaClusterId {
@@ -40,16 +42,29 @@ function networkFromClusterId(clusterId: SolanaClusterId): 'devnet' | 'localnet'
     return 'localnet';
 }
 
-const clusters = [
-    ...(import.meta.env.DEV ? [{ id: 'solana:localnet' as const, label: 'Localnet', url: '/rpc' }] : []),
-    { id: 'solana:devnet' as const, label: 'Devnet', url: 'https://api.devnet.solana.com' },
-    { id: 'solana:testnet' as const, label: 'Testnet', url: 'https://api.testnet.solana.com' },
-    {
-        id: 'solana:mainnet' as const,
-        label: 'Mainnet',
-        url: import.meta.env.VITE_MAINNET_RPC_URL ?? 'https://api.mainnet-beta.solana.com',
-    },
-];
+function buildClusters(): SolanaCluster[] {
+    const clusters: SolanaCluster[] = [
+        ...(import.meta.env.DEV ? [{ id: 'solana:localnet' as const, label: 'Localnet', url: '/rpc' }] : []),
+        { id: 'solana:devnet', label: 'Devnet', url: 'https://api.devnet.solana.com' },
+        { id: 'solana:testnet', label: 'Testnet', url: 'https://api.testnet.solana.com' },
+        {
+            id: 'solana:mainnet',
+            label: 'Mainnet',
+            url: import.meta.env.VITE_MAINNET_RPC_URL ?? 'https://api.mainnet-beta.solana.com',
+        },
+    ];
+
+    const custom = readCustomRpc();
+    if (custom) {
+        const target = clusters.find(c => c.id === `solana:${custom.network}`);
+        if (target) {
+            target.url = custom.url;
+            target.label = `${target.label} (${custom.label})`;
+        }
+    }
+
+    return clusters;
+}
 
 export function WalletButton() {
     const { account, isConnected, isConnecting } = useWallet();
@@ -154,7 +169,7 @@ export function SolanaProvider({ children }: { children: ReactNode }) {
         return getDefaultConfig({
             appName: 'Subscriptions',
             autoConnect: true,
-            clusters,
+            clusters: buildClusters(),
             enableMobile: true,
             network: networkFromClusterId(initialCluster),
             persistClusterSelection: false,

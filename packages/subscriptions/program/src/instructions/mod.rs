@@ -18,7 +18,9 @@ pub mod emit_event;
 pub mod helpers;
 pub mod initialize_subscription_authority;
 pub mod resume_subscription;
+pub mod revoke_abandoned_delegation;
 pub mod revoke_delegation;
+pub mod revoke_subscription_authority;
 pub mod transfer_fixed_delegation;
 pub mod transfer_recurring_delegation;
 pub mod transfer_subscription;
@@ -261,6 +263,20 @@ pub enum SubscriptionsInstruction {
     ))]
     ResumeSubscription = 13,
 
+    #[codama(account(name = "user", signer, docs = "The ATA owner revoking the program's delegate"))]
+    #[codama(account(name = "user_ata", writable, docs = "The user's ATA whose delegate is being revoked"))]
+    #[codama(account(name = "token_mint", docs = "The token mint of the user's ATA"))]
+    #[codama(account(name = "token_program", docs = "Token program"))]
+    RevokeSubscriptionAuthority = 14,
+
+    #[codama(account(name = "payer", signer, writable, docs = "The recorded payer reclaiming rent"))]
+    #[codama(account(name = "delegation_account", writable, docs = "The fixed or recurring delegation PDA to close"))]
+    #[codama(account(
+        name = "subscription_authority",
+        docs = "The delegation's recorded SubscriptionAuthority PDA (may be closed)"
+    ))]
+    RevokeAbandonedDelegation = 15,
+
     #[codama(skip)]
     #[codama(account(
         name = "event_authority",
@@ -316,6 +332,8 @@ impl SubscriptionsInstruction {
             }
             cancel_subscription::DISCRIMINATOR => Ok(Self::CancelSubscription),
             resume_subscription::DISCRIMINATOR => Ok(Self::ResumeSubscription),
+            revoke_subscription_authority::DISCRIMINATOR => Ok(Self::RevokeSubscriptionAuthority),
+            revoke_abandoned_delegation::DISCRIMINATOR => Ok(Self::RevokeAbandonedDelegation),
             &EMIT_EVENT_IX_DISC => Ok(Self::EmitEvent),
             _ => Err(SubscriptionsError::InvalidInstruction.into()),
         }
@@ -339,6 +357,8 @@ impl fmt::Display for SubscriptionsInstruction {
             Self::Subscribe(_) => write!(f, "subscribe"),
             Self::CancelSubscription => write!(f, "cancel_subscription"),
             Self::ResumeSubscription => write!(f, "resume_subscription"),
+            Self::RevokeSubscriptionAuthority => write!(f, "revoke_subscription_authority"),
+            Self::RevokeAbandonedDelegation => write!(f, "revoke_abandoned_delegation"),
             Self::EmitEvent => write!(f, "emit_event"),
         }
     }

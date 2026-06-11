@@ -26,8 +26,8 @@ import { useWallet } from '@solana/connector/react';
 import { address } from '@solana/kit';
 import { useMemo, useState } from 'react';
 import {
-    USDC_MULTIPLIER,
     isExpired,
+    isStillCollectibleSubscription,
     invalidateWithDelay,
     recurringAvailable,
     fmtDateTime,
@@ -41,6 +41,8 @@ import { getBlockTimestamp } from '@/hooks/use-time-travel';
 import { useMySubscriptions } from '@/hooks/use-subscriptions';
 import { getDelegationApprovalState } from '@/lib/delegation-approval-state';
 import { groupDelegationsByMint } from '@/lib/delegation-filters';
+import { useTokenConfig } from '@/hooks/use-token-config';
+import { formatTokenAmount, parseTokenAmount, resolvePlanTokenDisplay } from '@/lib/token-display';
 
 interface ActiveDelegationsProps {
     tokenMint: string;
@@ -86,12 +88,8 @@ function formatTimeRemaining(expiryTs: bigint, blockTime?: number): string | nul
     return `${Math.floor(remaining / 60)}m left`;
 }
 
-function formatAmount(amount: bigint | number): string {
-    const num = Number(amount) / USDC_MULTIPLIER;
-    return num.toLocaleString('en-US', {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 2,
-    });
+function formatAmount(amount: bigint | number, decimals: number): string {
+    return formatTokenAmount(BigInt(amount), decimals);
 }
 
 interface RevokeDelegationButtonProps {
@@ -153,11 +151,20 @@ function RevokeDelegationButton({ delegation }: RevokeDelegationButtonProps) {
 interface TransferDelegationButtonProps {
     delegation: DelegationItem;
     tokenMint: string;
+    decimals: number;
+    symbol: string;
     disabled?: boolean;
     blockTime?: number;
 }
 
-function TransferDelegationButton({ delegation, tokenMint, disabled, blockTime }: TransferDelegationButtonProps) {
+function TransferDelegationButton({
+    delegation,
+    tokenMint,
+    decimals,
+    symbol,
+    disabled,
+    blockTime,
+}: TransferDelegationButtonProps) {
     const [open, setOpen] = useState(false);
     const [amount, setAmount] = useState('');
     const { transferFixed, transferRecurring } = useSubscriptionsMutations();
@@ -172,11 +179,11 @@ function TransferDelegationButton({ delegation, tokenMint, disabled, blockTime }
               delegation.data.periodLengthS,
               blockTime,
           );
-    const availableAmount = formatAmount(availableRaw);
+    const availableAmount = formatAmount(availableRaw, decimals);
 
     const handleTransfer = async () => {
         try {
-            const amountBigInt = BigInt(Math.floor(parseFloat(amount) * USDC_MULTIPLIER));
+            const amountBigInt = parseTokenAmount(amount, decimals);
             const mutation = isFixed ? transferFixed : transferRecurring;
 
             await mutation.mutateAsync({
@@ -221,14 +228,16 @@ function TransferDelegationButton({ delegation, tokenMint, disabled, blockTime }
                 </DialogHeader>
                 <div className="py-4 space-y-4">
                     <div className="space-y-2">
-                        <label className="text-sm font-medium">Amount (USDC)</label>
+                        <label className="text-sm font-medium">Amount ({symbol})</label>
                         <TextInput
                             type="number"
                             value={amount}
                             onChange={e => setAmount(e.target.value)}
                             placeholder="0.00"
                         />
-                        <p className="text-xs text-muted-foreground">Available: {availableAmount} USDC</p>
+                        <p className="text-xs text-muted-foreground">
+                            Available: {availableAmount} {symbol}
+                        </p>
                     </div>
                     <div className="text-sm text-muted-foreground">
                         <p>
@@ -273,6 +282,8 @@ interface DelegationTableProps {
     mode: TabType;
     showExpired?: boolean;
     tokenMint: string;
+    decimals: number;
+    symbol: string;
     blockTime?: number;
     subscriptionAuthorityInitId?: bigint | null;
 }
@@ -282,6 +293,8 @@ function FixedDelegationTable({
     mode,
     showExpired,
     tokenMint,
+    decimals,
+    symbol,
     blockTime,
     subscriptionAuthorityInitId,
 }: DelegationTableProps) {
@@ -366,7 +379,7 @@ function FixedDelegationTable({
                                         </div>
                                     </TableCell>
                                     <TableCell className="text-foreground py-5 font-medium text-[15px] text-center">
-                                        {formatAmount(d.data.amount)} USDC
+                                        {formatAmount(d.data.amount, decimals)} {symbol}
                                     </TableCell>
                                     <TableCell className="py-5" />
                                     <TableCell className="py-5 text-sand-1400 text-[15px] text-center">
@@ -392,6 +405,8 @@ function FixedDelegationTable({
                                             <TransferDelegationButton
                                                 delegation={d}
                                                 tokenMint={tokenMint}
+                                                decimals={decimals}
+                                                symbol={symbol}
                                                 disabled={rowExpired || isStale}
                                                 blockTime={blockTime}
                                             />
@@ -412,6 +427,8 @@ function RecurringDelegationTable({
     mode,
     showExpired,
     tokenMint,
+    decimals,
+    symbol,
     blockTime,
     subscriptionAuthorityInitId,
 }: DelegationTableProps) {
@@ -503,7 +520,7 @@ function RecurringDelegationTable({
                                         </div>
                                     </TableCell>
                                     <TableCell className="text-foreground py-5 font-medium text-[15px] text-center">
-                                        {formatAmount(available)} USDC
+                                        {formatAmount(available, decimals)} {symbol}
                                         <span className="text-xs text-sand-1000 ml-1">
                                             / {formatDuration(d.data.periodLengthS)}
                                         </span>
@@ -538,6 +555,8 @@ function RecurringDelegationTable({
                                             <TransferDelegationButton
                                                 delegation={d}
                                                 tokenMint={tokenMint}
+                                                decimals={decimals}
+                                                symbol={symbol}
                                                 disabled={rowExpired || isStale}
                                                 blockTime={blockTime}
                                             />
@@ -631,6 +650,8 @@ function InitPrompt({
     const { account } = useWallet();
     const { initSubscriptionAuthority } = useSubscriptionsMutations();
     const queryClient = useQueryClient();
+    const { data: tokens } = useTokenConfig();
+    const symbol = resolvePlanTokenDisplay(tokenMint, tokens).symbol;
 
     const walletAddress = account;
     const { data: tokenAccounts, isLoading: tokenAccountsLoading } = useGetTokenAccountsQuery({
@@ -694,7 +715,7 @@ function InitPrompt({
                 </div>
             </div>
             {!hasAta && !tokenAccountsLoading && (
-                <p className="text-xs text-destructive">No token account found. Get some USDC first.</p>
+                <p className="text-xs text-destructive">No token account found. Get some {symbol} first.</p>
             )}
             <SolanaButton
                 onClick={handleInitialize}
@@ -738,8 +759,11 @@ function CloseSubscriptionAuthorityDialog({
     const activeFixed = outgoingForMint.fixed.filter(d => !isExpired(d.data.expiryTs, blockTime)).length;
     const activeRecurring = outgoingForMint.recurring.filter(d => !isExpired(d.data.expiryTs, blockTime)).length;
     const activeSubscriptions =
-        subscriptions?.filter(s => s.plan?.data.mint === tokenMint && Number(s.subscription.expiresAtTs) === 0)
-            .length ?? 0;
+        subscriptions?.filter(
+            s =>
+                s.plan?.data.mint === tokenMint &&
+                isStillCollectibleSubscription(s.subscription.expiresAtTs, blockTime),
+        ).length ?? 0;
     const totalActive = activeFixed + activeRecurring + activeSubscriptions;
     const hasActive = totalActive > 0;
 
@@ -764,8 +788,8 @@ function CloseSubscriptionAuthorityDialog({
                     <DialogTitle className="text-red-600">Disable Delegations</DialogTitle>
                     <DialogDescription>
                         {hasActive
-                            ? 'You have active outgoing delegations. Closing the SubscriptionAuthority account will invalidate them.'
-                            : 'Close your SubscriptionAuthority account and return the rent to your wallet.'}
+                            ? 'You have active outgoing delegations. Closing the SubscriptionAuthority account will invalidate them and revoke the program’s token approval on your account.'
+                            : 'Close your SubscriptionAuthority account, revoke the program’s token approval on your account, and return the rent to your wallet.'}
                     </DialogDescription>
                 </DialogHeader>
                 {hasActive && (
@@ -783,7 +807,7 @@ function CloseSubscriptionAuthorityDialog({
                             )}
                             {activeSubscriptions > 0 && (
                                 <p className="text-amber-600">
-                                    {activeSubscriptions} active subscription{activeSubscriptions > 1 ? 's' : ''}
+                                    {activeSubscriptions} collectible subscription{activeSubscriptions > 1 ? 's' : ''}
                                 </p>
                             )}
                         </div>
@@ -839,6 +863,10 @@ export function ActiveDelegations({
 
     const outgoing = useDelegations();
     const incoming = useIncomingDelegations();
+    const { data: tokens } = useTokenConfig();
+    const tokenDisplay = resolvePlanTokenDisplay(tokenMint, tokens);
+    const decimals = tokenDisplay.decimals ?? 0;
+    const symbol = tokenDisplay.symbol;
     const outgoingForMint = useMemo(() => groupDelegationsByMint(outgoing.all, tokenMint), [outgoing.all, tokenMint]);
     const incomingForMint = useMemo(() => groupDelegationsByMint(incoming.all, tokenMint), [incoming.all, tokenMint]);
 
@@ -913,6 +941,8 @@ export function ActiveDelegations({
                     mode="outgoing"
                     showExpired={showExpired}
                     tokenMint={tokenMint}
+                    decimals={decimals}
+                    symbol={symbol}
                     blockTime={blockTime}
                     subscriptionAuthorityInitId={subscriptionAuthorityInitId}
                 />
@@ -921,6 +951,8 @@ export function ActiveDelegations({
                     mode="outgoing"
                     showExpired={showExpired}
                     tokenMint={tokenMint}
+                    decimals={decimals}
+                    symbol={symbol}
                     blockTime={blockTime}
                     subscriptionAuthorityInitId={subscriptionAuthorityInitId}
                 />
@@ -937,12 +969,16 @@ export function ActiveDelegations({
                     delegations={incomingForMint.fixed}
                     mode="incoming"
                     tokenMint={tokenMint}
+                    decimals={decimals}
+                    symbol={symbol}
                     blockTime={blockTime}
                 />
                 <RecurringDelegationTable
                     delegations={incomingForMint.recurring}
                     mode="incoming"
                     tokenMint={tokenMint}
+                    decimals={decimals}
+                    symbol={symbol}
                     blockTime={blockTime}
                 />
             </div>

@@ -56,6 +56,11 @@ build-program:
     cd {{program_dir}} && cargo build-sbf
     @echo "✓ Program built"
 
+# Build the example transfer-hook program used as a CPI target in integration tests
+build-test-hook:
+    cd tests/transfer-hook-example && cargo build-sbf
+    @echo "✓ Test transfer-hook program built"
+
 # Generate IDL from Rust source
 generate-idl:
     pnpm run generate-idl
@@ -106,17 +111,17 @@ test-program: unit-test
     @true
 
 # Run Rust integration tests
-integration-test *args: build-program
+integration-test *args: build-program build-test-hook
     #!/usr/bin/env bash
     set -euo pipefail
     cargo test -p tests-subscriptions "$@"
 
 # Run tests with compute unit benchmark report
-test-and-benchmark: build-program
+test-and-benchmark: build-program build-test-hook
     CU_REPORT=1 CU_REPORT_DATE=$(date +%Y-%m-%d) cargo test -p tests-subscriptions
 
 # Run TypeScript client integration tests
-test-client: build-program generate-clients ensure-surfpool
+test-client: build-program build-test-hook generate-clients ensure-surfpool
     cd {{ts_client_dir}} && pnpm run test
 
 # ============================================
@@ -340,14 +345,19 @@ check-solana-verify:
 
 # Verify mainnet deployment against repo (remote build via OtterSec).
 # Note: Remote verification (--remote) only works on mainnet.
+# Apple Silicon (local builds without --remote): enable Docker/Colima Rosetta and
+# `export DOCKER_DEFAULT_PLATFORM=linux/amd64`. The pinned verify image is amd64-only,
+# so the SBF build fails on getrandom under arm64 emulation without it.
 verify-mainnet: check-solana-verify
     #!/usr/bin/env bash
     set -euo pipefail
     PROG_ID=$(sed -n 's/.*declare_id!("\([^"]*\)").*/\1/p' "{{program_dir}}/src/lib.rs")
     solana-verify verify-from-repo \
-        https://github.com/solana-program/subscriptions \
+        https://github.com/solana-foundation/subscriptions \
         --program-id "$PROG_ID" \
         --library-name subscriptions_program \
-        --mount-path program \
         --remote \
         -um
+
+verify-local: check-solana-verify
+    solana-verify build --library-name subscriptions_program
