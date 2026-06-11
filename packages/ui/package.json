@@ -18,6 +18,9 @@
     "clean": "rm -rf dist node_modules .turbo"
   },
   "dependencies": {
+    "@solana-program/token": "^0.13.0",
+    "@solana/kit": "^6.9.0",
+    "@subscriptions/client": "link:../subscriptions/clients/typescript",
     "clsx": "^2.1.0",
     "tailwind-merge": "^3.0.0"
   },
@@ -31,6 +34,9 @@
   "peerDependencies": {
     "react": ">=18.0.0"
   },
-  "files": ["dist", "src/globals.css"],
+  "files": [
+    "dist",
+    "src/globals.css"
+  ],
   "license": "MIT"
 }
