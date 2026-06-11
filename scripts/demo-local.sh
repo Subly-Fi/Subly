@@ -89,8 +89,17 @@ cmd_up() {
   fi
 
   # ── 4. Merchant api/scripts bağımlılıkları ───────────────────────────────
-  [[ -d "$ROOT/apps/merchant/api/node_modules"     ]] || (log "merchant/api deps kuruluyor...";     cd "$ROOT/apps/merchant/api"     && pnpm install --silent)
-  [[ -d "$ROOT/apps/merchant/scripts/node_modules" ]] || (log "merchant/scripts deps kuruluyor..."; cd "$ROOT/apps/merchant/scripts" && pnpm install --silent)
+  # Bu iki klasör pnpm workspace ÜYESİ DEĞİL (apps/* sadece apps/merchant'ı
+  # kapsar). --ignore-workspace olmadan pnpm kuruluma kök workspace'te yapar
+  # ve node_modules/.bin/tsx burada oluşmaz.
+  if [[ ! -x "$ROOT/apps/merchant/api/node_modules/.bin/tsx" ]]; then
+    log "merchant/api deps kuruluyor..."
+    ( cd "$ROOT/apps/merchant/api" && pnpm install --ignore-workspace --silent )
+  fi
+  if [[ ! -x "$ROOT/apps/merchant/scripts/node_modules/.bin/tsx" ]]; then
+    log "merchant/scripts deps kuruluyor..."
+    ( cd "$ROOT/apps/merchant/scripts" && pnpm install --ignore-workspace --silent )
+  fi
 
   # ── 5. Surfpool (validator + program kurulumu runbook ile) ───────────────
   if port_open 8899; then
@@ -105,17 +114,31 @@ cmd_up() {
     sleep 2
   fi
 
-  # ── 6. Fee payer'a SOL ───────────────────────────────────────────────────
+  # ── 6. Program zincirde mi? (runbook bazen sessiz düşebilir — garantiye al)
+  if ! solana account "$PROGRAM_ID" --url "$RPC_URL" >/dev/null 2>&1; then
+    log "Program localnete kurulmamış; surfnet_writeProgram ile yazılıyor..."
+    node -e "
+      const fs=require('fs');
+      const hex=fs.readFileSync('$SO_PATH').toString('hex');
+      fs.writeFileSync('$DEMO_DIR/write-program.json', JSON.stringify({jsonrpc:'2.0',id:1,method:'surfnet_writeProgram',params:['$PROGRAM_ID',hex,0]}));
+    "
+    RESULT=$(curl -s -X POST "$RPC_URL" -H 'Content-Type: application/json' --data @"$DEMO_DIR/write-program.json")
+    echo "$RESULT" | grep -q '"error"' && die "Program yazılamadı: $RESULT"
+    solana account "$PROGRAM_ID" --url "$RPC_URL" >/dev/null 2>&1 || die "Program hâlâ zincirde görünmüyor"
+  fi
+  log "✓ Program zincirde ($PROGRAM_ID)"
+
+  # ── 7. Fee payer'a SOL ───────────────────────────────────────────────────
   solana airdrop 10 --url "$RPC_URL" >/dev/null 2>&1 || true
 
-  # ── 7. Mock USDC + config.json (idempotent) ──────────────────────────────
+  # ── 8. Mock USDC + config.json (idempotent) ──────────────────────────────
   log "Test ortamı başlatılıyor (mock USDC, config)..."
-  ( cd "$ROOT/apps/merchant/scripts" && NETWORK=localnet RPC_URL="$RPC_URL" pnpm run --silent init )
+  ( cd "$ROOT/apps/merchant/scripts" && NETWORK=localnet RPC_URL="$RPC_URL" ./node_modules/.bin/tsx init-test-environment.ts )
 
   USDC_MINT=$(node -e "const c=JSON.parse(require('fs').readFileSync('$ROOT/apps/merchant/config.json'));process.stdout.write(c.networks.localnet.tokens.find(t=>t.symbol==='USDC').mint)")
   log "✓ Mock USDC: $USDC_MINT"
 
-  # ── 8. Subly signer (puller) cüzdanı ─────────────────────────────────────
+  # ── 9. Subly signer (puller) cüzdanı ─────────────────────────────────────
   if [[ ! -f "$SIGNER_PATH" ]]; then
     solana-keygen new --no-bip39-passphrase --silent -o "$SIGNER_PATH"
   fi
@@ -124,7 +147,7 @@ cmd_up() {
   SIGNER_SECRET=$(cat "$SIGNER_PATH")
   log "✓ Subly signer: $SIGNER_ADDRESS"
 
-  # ── 9. Env dosyaları ─────────────────────────────────────────────────────
+  # ── 10. Env dosyaları ─────────────────────────────────────────────────────
   MERCHANT_ENV="$ROOT/apps/merchant/.env.local"
   cat > "$MERCHANT_ENV" <<EOF
 # scripts/demo-local.sh tarafından üretildi
@@ -172,9 +195,9 @@ EOF
     warn "─────────────────────────────────────────────────────────────"
   fi
 
-  # ── 10. Servisler ────────────────────────────────────────────────────────
+  # ── 11. Servisler ────────────────────────────────────────────────────────
   if port_open 3001; then log "✓ local-api zaten çalışıyor"; else
-    start_bg local-api "$ROOT/apps/merchant/api" pnpm run dev
+    start_bg local-api "$ROOT/apps/merchant/api" ./node_modules/.bin/tsx --watch server.ts
   fi
 
   if port_open 3002; then log "✓ subly-api zaten çalışıyor"; else
