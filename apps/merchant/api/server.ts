@@ -8,9 +8,13 @@ import { checkProgramStatus } from './lib/program-status.js';
 import { buildDeployPlan, buildUpgradePlan } from './lib/deploy-builder.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = join(__dirname, '../..');
+// Fork note: in the upstream repo this file lives at webapp/api/ and ../..
+// resolves to the repo root. In the Subly monorepo the program sources,
+// runbooks, and target/ live in the subscriptions subtree instead.
+const PROJECT_ROOT = join(__dirname, '../../../packages/subscriptions');
 
 const PORT = 3001;
+const HOST = process.env.API_HOST?.trim() || '127.0.0.1';
 const RPC_URL = process.env.RPC_URL ?? 'http://127.0.0.1:8899';
 const CONFIG_PATH = join(__dirname, '../config.json');
 
@@ -21,8 +25,7 @@ let deployingProgram = false;
 const MIN_SOL_AIRDROP = 0.1;
 const MAX_SOL_AIRDROP = 10;
 
-const SO_PATH = join(__dirname, '../../target/deploy/subscriptions.so');
-const KEYPAIR_PATH = join(__dirname, '../../keys/subscriptions-keypair.json');
+const SO_PATH = join(PROJECT_ROOT, 'target/deploy/subscriptions_program.so');
 
 const PROGRAM_ADDRESS = 'De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44';
 
@@ -254,8 +257,12 @@ async function handleBinaryInfo(): Promise<Response> {
     }
 }
 
-async function handlePrepareDeploy(body: { isUpgrade?: boolean; rpcUrl?: string }): Promise<Response> {
-    const { isUpgrade, rpcUrl } = body;
+async function handlePrepareDeploy(body: {
+    isUpgrade?: boolean;
+    programAddress?: string;
+    rpcUrl?: string;
+}): Promise<Response> {
+    const { isUpgrade, programAddress, rpcUrl } = body;
 
     try {
         const soBytes = await readFile(SO_PATH);
@@ -267,9 +274,10 @@ async function handlePrepareDeploy(body: { isUpgrade?: boolean; rpcUrl?: string 
             const programAddr = config.networks[network]?.programAddress ?? PROGRAM_ADDRESS;
             plan = await buildUpgradePlan(soBytes, programAddr);
         } else {
-            const keypairJson = await readFile(KEYPAIR_PATH, 'utf-8');
-            const programKeypairBytes = new Uint8Array(JSON.parse(keypairJson));
-            plan = await buildDeployPlan(soBytes, programKeypairBytes);
+            if (!programAddress || !BASE58_RE.test(programAddress)) {
+                return jsonResponse({ error: 'Program address required for initial deploy' }, 400);
+            }
+            plan = await buildDeployPlan(soBytes, programAddress);
         }
 
         return jsonResponse(plan);
@@ -361,7 +369,7 @@ async function deployProgramViaSurfnet(): Promise<boolean> {
         log('info', 'Program deployed via surfnet_writeProgram');
 
         // Register IDL if available
-        const IDL_PATH = join(__dirname, '../../idl/subscriptions.json');
+        const IDL_PATH = join(PROJECT_ROOT, 'idl/subscriptions.json');
         try {
             const idlJson = JSON.parse(await readFile(IDL_PATH, 'utf-8'));
             // surfnet_registerIdl expects an 'address' field at the top level
@@ -652,10 +660,14 @@ async function handleRequest(req: Request): Promise<Response> {
         if (!parseResult.success) {
             response = jsonResponse({ error: parseResult.error }, 400);
         } else {
-            const deployBody = extractFields<{ isUpgrade?: boolean; rpcUrl?: string }>(parseResult.data, {
-                isUpgrade: 'optional_boolean',
-                rpcUrl: 'optional_string',
-            });
+            const deployBody = extractFields<{ isUpgrade?: boolean; programAddress?: string; rpcUrl?: string }>(
+                parseResult.data,
+                {
+                    isUpgrade: 'optional_boolean',
+                    programAddress: 'optional_string',
+                    rpcUrl: 'optional_string',
+                },
+            );
             response = await handlePrepareDeploy(deployBody);
         }
     } else if (url.pathname === '/api/setup/start-validator' && req.method === 'POST') {
@@ -741,20 +753,20 @@ const server = createServer(async (req, res) => {
     res.end(await response.text());
 });
 
-server.listen(PORT, () => {
-    console.log(`Subscriptions API server running on port ${PORT}`);
+server.listen(PORT, HOST, () => {
+    console.log(`Subscriptions API server running on http://${HOST}:${PORT}`);
     console.log('');
     console.log('Endpoints:');
-    console.log(`  GET  http://localhost:${PORT}/api/health`);
-    console.log(`  GET  http://localhost:${PORT}/api/config`);
-    console.log(`  GET  http://localhost:${PORT}/api/tokens`);
-    console.log(`  POST http://localhost:${PORT}/api/airdrop/sol`);
-    console.log(`  POST http://localhost:${PORT}/api/airdrop/usdc`);
-    console.log(`  GET  http://localhost:${PORT}/api/program/status`);
-    console.log(`  GET  http://localhost:${PORT}/api/program/binary-info`);
-    console.log(`  POST http://localhost:${PORT}/api/program/prepare-deploy`);
-    console.log(`  POST http://localhost:${PORT}/api/setup/start-validator`);
-    console.log(`  GET  http://localhost:${PORT}/api/setup/validator-status`);
-    console.log(`  POST http://localhost:${PORT}/api/setup/create-mock-usdc`);
-    console.log(`  POST http://localhost:${PORT}/api/setup/save-config`);
+    console.log(`  GET  http://${HOST}:${PORT}/api/health`);
+    console.log(`  GET  http://${HOST}:${PORT}/api/config`);
+    console.log(`  GET  http://${HOST}:${PORT}/api/tokens`);
+    console.log(`  POST http://${HOST}:${PORT}/api/airdrop/sol`);
+    console.log(`  POST http://${HOST}:${PORT}/api/airdrop/usdc`);
+    console.log(`  GET  http://${HOST}:${PORT}/api/program/status`);
+    console.log(`  GET  http://${HOST}:${PORT}/api/program/binary-info`);
+    console.log(`  POST http://${HOST}:${PORT}/api/program/prepare-deploy`);
+    console.log(`  POST http://${HOST}:${PORT}/api/setup/start-validator`);
+    console.log(`  GET  http://${HOST}:${PORT}/api/setup/validator-status`);
+    console.log(`  POST http://${HOST}:${PORT}/api/setup/create-mock-usdc`);
+    console.log(`  POST http://${HOST}:${PORT}/api/setup/save-config`);
 });

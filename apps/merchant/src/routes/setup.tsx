@@ -30,6 +30,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { WalletButton } from '@/components/solana/solana-provider';
+import { ProgramKeypairPicker } from '@/components/program/program-keypair-picker';
 import { useLocalnetSetup, useDevnetSetup, type SetupStep } from '@/hooks/use-setup-wizard';
 import { useProgramDeploy } from '@/hooks/use-program-deploy';
 import { useProgramStatus } from '@/hooks/use-program-status';
@@ -45,6 +46,7 @@ import { truncateAddress } from '@/lib/format';
 import { isValidBase58Address } from '@/lib/validators';
 import { useRpc } from '@/hooks/use-rpc';
 import { api } from '@/lib/api-client';
+import type { ProgramKeypairImport } from '@/lib/program-keypair';
 import solanaLogo from '@/assets/solana-logo.svg';
 
 type Network = 'localnet' | 'devnet' | null;
@@ -405,6 +407,7 @@ function DevnetWizard({ onComplete, onBack }: { onComplete: () => void; onBack: 
     const [usdcVerifyFailed, setUsdcVerifyFailed] = useState(false);
     const [multisigAddress, setMultisigAddress] = useState('');
     const [confirmClose, setConfirmClose] = useState(false);
+    const [programKeypair, setProgramKeypair] = useState<ProgramKeypairImport | null>(null);
     const [existingUsdcMint, setExistingUsdcMint] = useState<string | null>(null);
     const [configUsdcOnline, setConfigUsdcOnline] = useState<boolean | null>(null);
     const [checkingUsdc, setCheckingUsdc] = useState(false);
@@ -449,7 +452,7 @@ function DevnetWizard({ onComplete, onBack }: { onComplete: () => void; onBack: 
         if (account && phase === 'wallet') {
             log('success', `Wallet connected: ${account}`);
             markStepDone('connect-wallet', `Connected: ${account.slice(0, 8)}...`);
-            setPhase('program-choice');
+            queueMicrotask(() => setPhase('program-choice'));
         }
     }, [account, phase, markStepDone, log]);
 
@@ -518,11 +521,10 @@ function DevnetWizard({ onComplete, onBack }: { onComplete: () => void; onBack: 
     );
 
     const handleDeploy = useCallback(async () => {
-        const alreadyDeployed = programStatus.data?.deployed;
-        if (alreadyDeployed) {
-            log('info', 'Program already deployed, skipping...');
-            markStepDone('deploy-program', 'Already deployed');
-            setPhase('transfer-authority');
+        if (!programKeypair) {
+            const msg = 'Select a program keypair before deployment';
+            log('error', msg);
+            markStepError('deploy-program', msg);
             return;
         }
 
@@ -530,11 +532,16 @@ function DevnetWizard({ onComplete, onBack }: { onComplete: () => void; onBack: 
         markStepRunning('deploy-program', 'Deploying program via wallet...');
         try {
             log('info', 'Preparing deploy plan (fetching .so binary from API)...');
-            const deployResult = await programDeploy.mutateAsync({ isUpgrade: false });
-            log('success', 'Program deployed successfully');
-            if (deployResult?.programAddress) {
-                setResult({ programId: deployResult.programAddress, usdcMint: '' });
+            const deployResult = await programDeploy.mutateAsync({
+                isUpgrade: false,
+                programAddress: programKeypair?.programAddress,
+                programKeypairBytes: programKeypair?.bytes,
+            });
+            if (!deployResult?.programAddress) {
+                throw new Error('Deployment did not return a program address');
             }
+            log('success', 'Program deployed successfully');
+            setResult({ programId: deployResult.programAddress, usdcMint: '' });
             markStepDone('deploy-program', 'Program deployed');
             setPhase('transfer-authority');
         } catch (e) {
@@ -542,15 +549,21 @@ function DevnetWizard({ onComplete, onBack }: { onComplete: () => void; onBack: 
             log('error', `Deploy failed: ${msg}`);
             markStepError('deploy-program', msg);
         }
-    }, [programStatus.data, programDeploy, markStepDone, markStepError, markStepRunning, setResult, log]);
+    }, [programDeploy, programKeypair, markStepDone, markStepError, markStepRunning, setResult, log]);
 
     const handleTransferAuthority = useCallback(async () => {
         if (!walletSigner) return;
+        if (!result?.programId) {
+            const msg = 'No deployed program target available';
+            log('error', msg);
+            markStepError('deploy-program', msg);
+            return;
+        }
         const newAuth = multisigAddress;
         log('info', `Transferring authority to ${newAuth}...`);
         markStepRunning('deploy-program', 'Transferring upgrade authority...');
         try {
-            const programAddr = (result?.programId ?? configProgramAddress ?? '') as Address;
+            const programAddr = result.programId as Address;
             const programDataPDA = await deriveProgramDataAddress(programAddr);
             const ix = buildSetAuthorityIx(programDataPDA, walletSigner, newAuth as Address);
             const sig = await walletSignAndSend(ix, walletSigner);
@@ -569,7 +582,6 @@ function DevnetWizard({ onComplete, onBack }: { onComplete: () => void; onBack: 
         txToast,
         multisigAddress,
         result,
-        configProgramAddress,
         markStepDone,
         markStepError,
         markStepRunning,
@@ -847,9 +859,14 @@ function DevnetWizard({ onComplete, onBack }: { onComplete: () => void; onBack: 
 
                         {phase === 'deploy' && (
                             <div className="space-y-3">
+                                <ProgramKeypairPicker
+                                    disabled={isPending}
+                                    value={programKeypair}
+                                    onChange={setProgramKeypair}
+                                />
                                 <SolanaButton
                                     onClick={handleDeploy}
-                                    disabled={isPending}
+                                    disabled={isPending || !programKeypair}
                                     loading={programDeploy.isPending}
                                     style={{ width: '100%' }}
                                 >
@@ -911,6 +928,14 @@ function DevnetWizard({ onComplete, onBack }: { onComplete: () => void; onBack: 
                                             Optional
                                         </span>
                                     </div>
+                                    {result?.programId && (
+                                        <p className="text-xs text-sand-1000">
+                                            Target:{' '}
+                                            <span className="font-mono text-sand-1400">
+                                                {truncateAddress(result.programId, 12)}
+                                            </span>
+                                        </p>
+                                    )}
                                     <TextInput
                                         value={multisigAddress}
                                         onChange={e => setMultisigAddress(e.target.value)}
@@ -919,7 +944,9 @@ function DevnetWizard({ onComplete, onBack }: { onComplete: () => void; onBack: 
                                     />
                                     <SolanaButton
                                         onClick={handleTransferAuthority}
-                                        disabled={isPending || !isValidBase58Address(multisigAddress)}
+                                        disabled={
+                                            isPending || !result?.programId || !isValidBase58Address(multisigAddress)
+                                        }
                                         loading={isPending}
                                         style={{ width: '100%' }}
                                     >
