@@ -16,7 +16,7 @@ Supported delegation models:
 
 The program emits on-chain events via self-CPI for indexer integration (subscription created/cancelled, fixed/recurring/subscription transfers).
 
-Token-2022 mints are supported, but the following extensions are rejected during SA initialization: ConfidentialTransfer, NonTransferable, PermanentDelegate, TransferHook, TransferFee, MintCloseAuthority, and Pausable.
+Token-2022 mints are supported, including mints with a configured `TransferHook`. On delegated transfers the program forwards the mint's runtime hook accounts into the Token-2022 `TransferChecked` CPI, which executes the configured hook program. The hook's `ExtraAccountMetaList` validation PDA is required among those accounts, so an active hook's configured policy context is always enforced.
 
 Delegation accounts include a version field and the program implements a three-tier migration framework (lazy in-place update, explicit migrate instruction, revoke/recreate) for future upgrades. See [ADR-003](docs/003-versioning-migration-architecture.md) for details.
 
@@ -29,6 +29,20 @@ This repository contains:
     - Rust client (`subscriptions`) in `clients/rust`
 - A local demo webapp in `webapp/`
 - CI pipeline with build, test, lint, and CU benchmarking
+
+## Rent Costs
+
+Rent is recoverable: closing a delegation, plan, or subscription authority returns its rent to the original payer.
+
+| Flow                        | Account(s) created     | Rent for new account(s) (SOL) |
+| --------------------------- | ---------------------- | ----------------------------- |
+| Enable authority for a mint | SubscriptionAuthority  | 0.00162864                    |
+| Merchant creates a plan     | Plan                   | 0.00430824                    |
+| Subscribe to a plan         | SubscriptionDelegation | 0.00196968                    |
+| Grant fixed delegation      | FixedDelegation        | 0.00219240                    |
+| Grant recurring delegation  | RecurringDelegation    | 0.00235944                    |
+
+> Subscribe and delegation flows require an existing `SubscriptionAuthority`. If starting from scratch, add **0.00162864 SOL** for the "Enable authority" step.
 
 ## Program ID
 
@@ -73,7 +87,7 @@ subscriptions/
 ## Quick Start
 
 ```bash
-git clone git@github.com:solana-program/subscriptions.git
+git clone git@github.com:solana-foundation/subscriptions.git
 cd subscriptions
 just setup
 just build
@@ -258,6 +272,10 @@ just webapp-clean     # also removes generated state
 The external audit baseline is commit `18a50bc21c4b91ed62e612109c371f41200385e8`, and audit fixes were implemented and verified through commit `b4b0345f9fd616e1355b7b6628362283fd6b1691`.
 
 Audit status, audited-through commit, and the current unaudited delta are tracked in [audits/AUDIT_STATUS.md](audits/AUDIT_STATUS.md).
+
+## Acknowledgments
+
+Thanks to [Moonsong Labs](https://moonsonglabs.com) for the initial design and implementation of this program.
 
 ## CI Pipeline
 
