@@ -260,7 +260,7 @@ function NetworkSelection({ onSelect, onSkip }: { onSelect: (n: Network) => void
                         <Settings2 className="h-10 w-10 text-foreground" />
                         <img src={solanaLogo} alt="Solana" className="h-8 w-8" />
                     </div>
-                    <h1 className="text-3xl font-bold text-foreground">Subscriptions Setup</h1>
+                    <h1 className="text-3xl font-bold text-foreground">Subly Setup</h1>
                     <p className="text-sand-1100">Choose your network to get started</p>
                 </div>
 

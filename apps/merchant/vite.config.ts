@@ -10,7 +10,7 @@ export default defineConfig({
     resolve: {
         alias: {
             '@': path.resolve(__dirname, './src'),
-            '@idl': path.resolve(__dirname, '../idl/subscriptions.json'),
+            '@idl': path.resolve(__dirname, '../../packages/subscriptions/idl/subscriptions.json'),
         },
         tsconfigPaths: true,
     },

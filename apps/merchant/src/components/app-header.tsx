@@ -13,7 +13,6 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { CURRENT_PROGRAM_VERSION } from '@subscriptions/client';
-import solanaLogo from '@/assets/solana-logo.svg';
 import { cn } from '@/lib/utils';
 
 import { NAV_ITEMS, type NavItem } from './nav-items';
@@ -162,8 +161,7 @@ export function AppHeader() {
         >
             <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4">
                 <Link to="/" className="flex items-center gap-2 group">
-                    <img src={solanaLogo} alt="Solana" className="h-6 w-6 shrink-0" />
-                    <span className="text-foreground font-semibold text-lg tracking-tight">Subscriptions</span>
+                    <span className="text-foreground font-extrabold text-xl tracking-tight">subly.</span>
                     <span className="text-xs font-medium text-sand-900">v{CURRENT_PROGRAM_VERSION}</span>
                 </Link>
 

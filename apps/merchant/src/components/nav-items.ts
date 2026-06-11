@@ -1,4 +1,4 @@
-import { Banknote, Calendar, ClipboardPen, Code2, Droplets, LayoutDashboard, ShoppingBag, Users } from 'lucide-react';
+import { Banknote, Calendar, ClipboardPen, Code2, Droplets, LayoutDashboard, Settings2Icon, ShoppingBag, Users } from 'lucide-react';
 import { type LucideIcon } from 'lucide-react';
 
 export interface NavItem {
@@ -20,6 +20,7 @@ export const NAV_ITEMS: NavItem[] = [
         label: 'Plans',
         path: '/plans',
     },
+    { icon: Settings2Icon, label: 'Settings', path: '/settings' },
     { clusterFilter: ['solana:localnet', 'solana:devnet'], icon: Droplets, label: 'Faucet', path: '/faucet' },
     ...(import.meta.env.DEV
         ? [

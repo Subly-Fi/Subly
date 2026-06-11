@@ -11,6 +11,7 @@ import { Delegations } from '@/routes/delegations';
 import { Subscriptions } from '@/routes/subscriptions';
 import { Plans } from '@/routes/plans';
 import { CollectPayments } from '@/routes/collect-payments';
+import { Settings } from '@/routes/settings';
 import { useNetworkConfig } from '@/hooks/use-token-config';
 import { clusterIdToNetwork } from '@/lib/cluster';
 import { useClusterConfig } from '@/hooks/use-cluster-config';
@@ -135,6 +136,14 @@ export default function App() {
                                 </AppLayout>
                             }
                             path="/plans/collect"
+                        />
+                        <Route
+                            element={
+                                <AppLayout>
+                                    <Settings />
+                                </AppLayout>
+                            }
+                            path="/settings"
                         />
                         <Route
                             element={

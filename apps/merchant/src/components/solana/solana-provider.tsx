@@ -152,7 +152,7 @@ export function SolanaProvider({ children }: { children: ReactNode }) {
     const connectorConfig = useMemo(() => {
         const initialCluster = defaultClusterId();
         return getDefaultConfig({
-            appName: 'Subscriptions',
+            appName: 'Subly',
             autoConnect: true,
             clusters,
             enableMobile: true,
