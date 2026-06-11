@@ -57,6 +57,22 @@ cmd_stop() {
   log "tamamlandı."
 }
 
+start_subly_api() {
+  local api_env="$ROOT/apps/api/.env.local"
+  [[ -f "$api_env" ]] || die "apps/api/.env.local yok — önce 'up' çalıştır"
+  ( cd "$ROOT/apps/api" && set -a && source "$api_env" && set +a && nohup pnpm run dev >"$DEMO_DIR/subly-api.log" 2>&1 & echo $! > "$DEMO_DIR/subly-api.pid" )
+  log "subly-api başlatıldı (log: .demo/subly-api.log)"
+}
+
+cmd_restart_api() {
+  stop_one subly-api
+  # tsx watch alt süreci pid dosyasında olmayabilir — portu tutanı da temizle.
+  lsof -ti tcp:3002 2>/dev/null | xargs kill 2>/dev/null || true
+  sleep 1
+  start_subly_api
+  log "✓ subly-api yeni env ile yeniden başlatıldı"
+}
+
 cmd_status() {
   for entry in "surfpool:8899" "local-api:3001" "subly-api:3002" "vite:5173"; do
     local_name="${entry%%:*}"; local_port="${entry##*:}"
@@ -202,7 +218,7 @@ EOF
     warn "SUPABASE_SERVICE_ROLE_KEY eksik!"
     warn "Supabase Dashboard → Project Settings → API Keys → service_role"
     warn "anahtarını kopyala ve apps/api/.env.local içine yapıştır,"
-    warn "sonra scripti tekrar çalıştır. (Auth/analytics bu olmadan boş döner.)"
+    warn "sonra: scripts/demo-local.sh restart-api  (Auth/analytics bu olmadan boş döner.)"
     warn "─────────────────────────────────────────────────────────────"
   fi
 
@@ -212,8 +228,7 @@ EOF
   fi
 
   if port_open 3002; then log "✓ subly-api zaten çalışıyor"; else
-    ( cd "$ROOT/apps/api" && set -a && source "$API_ENV" && set +a && nohup pnpm run dev >"$DEMO_DIR/subly-api.log" 2>&1 & echo $! > "$DEMO_DIR/subly-api.pid" )
-    log "subly-api başlatıldı (log: .demo/subly-api.log)"
+    start_subly_api
   fi
 
   if port_open 5173; then log "✓ vite zaten çalışıyor"; else
@@ -239,8 +254,9 @@ EOF
 }
 
 case "${1:-up}" in
-  up)     cmd_up ;;
-  stop)   cmd_stop ;;
-  status) cmd_status ;;
-  *)      die "kullanım: $0 [up|stop|status]" ;;
+  up)          cmd_up ;;
+  stop)        cmd_stop ;;
+  status)      cmd_status ;;
+  restart-api) cmd_restart_api ;;
+  *)           die "kullanım: $0 [up|stop|status|restart-api]" ;;
 esac
