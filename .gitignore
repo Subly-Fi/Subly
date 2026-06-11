@@ -56,3 +56,7 @@ keys/
 # Solana
 target/
 test-ledger/
+
+# Local demo stack (scripts/demo-local.sh)
+.demo/
+apps/merchant/config.json
