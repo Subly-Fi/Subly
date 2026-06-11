@@ -78,13 +78,16 @@ cmd_up() {
     log "Varsayılan solana keypair yok, oluşturuluyor..."
     solana-keygen new --no-bip39-passphrase --silent
   fi
-  # spl-token "default signer" için ~/.config/solana/cli/config.yml ister;
-  # solana-keygen bunu OLUŞTURMAZ. Yoksa keypair'i işaret eden config yaz.
-  if [[ ! -f "$HOME/.config/solana/cli/config.yml" ]]; then
-    log "Solana CLI config'i yok, oluşturuluyor (keypair: ~/.config/solana/id.json)..."
+  # spl-token "default signer"ı ~/.config/solana/cli/config.yml'deki keypair
+  # path'inden okur; solana-keygen bu config'i OLUŞTURMAZ. Config yoksa, boşsa
+  # ya da var olmayan bir keypair'i işaret ediyorsa düzelt.
+  KEYPAIR_IN_CFG=$(solana config get 2>/dev/null | awk '/Keypair Path:/ {print $3}')
+  if [[ -z "${KEYPAIR_IN_CFG:-}" || ! -f "$KEYPAIR_IN_CFG" ]]; then
+    log "Solana CLI config'i eksik/geçersiz — düzeltiliyor (keypair: ~/.config/solana/id.json)..."
     solana config set --keypair "$HOME/.config/solana/id.json" >/dev/null
   fi
   FEE_PAYER_PUBKEY=$(solana-keygen pubkey "$HOME/.config/solana/id.json")
+  log "✓ Fee payer: $FEE_PAYER_PUBKEY"
 
   # ── 3. Program binary'si (mainnet'ten dump — Rust toolchain gerekmez) ────
   if [[ ! -f "$SO_PATH" ]]; then
