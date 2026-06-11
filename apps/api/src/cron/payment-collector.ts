@@ -22,7 +22,21 @@ import { supabase } from '../lib/supabase';
 import { getSublySignerWallet, PROGRAM_ADDRESS, rpc } from '../lib/solana';
 import { dispatchMerchantWebhook } from '../lib/webhook-dispatcher';
 
-const TOKEN_PROGRAM = address('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+/**
+ * Resolves the owning token program (SPL Token vs Token-2022) for a mint by
+ * reading the mint account's owner. Cached per process — a mint's owner can
+ * never change.
+ */
+const tokenProgramCache = new Map<string, ReturnType<typeof address>>();
+async function resolveTokenProgram(mint: ReturnType<typeof address>) {
+  const cached = tokenProgramCache.get(String(mint));
+  if (cached) return cached;
+  const info = await rpc.getAccountInfo(mint, { encoding: 'base64' }).send();
+  if (!info.value) throw new Error(`Mint ${mint} not found on-chain`);
+  const owner = address(String(info.value.owner));
+  tokenProgramCache.set(String(mint), owner);
+  return owner;
+}
 
 /** Mark a subscription as payment_failed after this many consecutive failures. */
 const MAX_CONSECUTIVE_FAILURES = 3;
@@ -44,6 +58,23 @@ interface SubscriptionRow {
   current_period_start: string | null;
   last_payment_at: string | null;
   consecutive_failures: number | null;
+}
+
+/**
+ * Authoritative "now" = chain clock, not wall clock. The on-chain program
+ * enforces periods against chain time; using the same clock keeps eligibility
+ * consistent (and makes localnet time-travel demos work). Falls back to wall
+ * time if block time is unavailable.
+ */
+async function getChainNow(): Promise<number> {
+  try {
+    const slot = await rpc.getSlot({ commitment: 'confirmed' }).send();
+    const time = await rpc.getBlockTime(slot).send();
+    if (time != null) return Number(time);
+  } catch (err) {
+    console.warn('[cron] Failed to read chain time, falling back to wall clock:', err);
+  }
+  return Math.floor(Date.now() / 1000);
 }
 
 export async function runPaymentCollection(): Promise<CollectionResult[]> {
@@ -96,8 +127,9 @@ async function collectForPlan(
   const planAddr = address(plan.address);
   const mintAddr = address(plan.mint);
   const merchantAddr = address(plan.merchant_wallet);
+  const tokenProgram = await resolveTokenProgram(mintAddr);
   const periodSeconds = plan.period_hours * 3600;
-  const now = Math.floor(Date.now() / 1000);
+  const now = await getChainNow();
 
   const { data: subs } = await supabase!
     .from('subscriptions')
@@ -125,7 +157,7 @@ async function collectForPlan(
       const [receiverAta] = await findAssociatedTokenPda({
         mint: mintAddr,
         owner: merchantAddr,
-        tokenProgram: TOKEN_PROGRAM,
+        tokenProgram,
       });
 
       const instruction = await getTransferSubscriptionOverlayInstructionAsync({
@@ -136,7 +168,7 @@ async function collectForPlan(
         receiverAta,
         subscriptionPda,
         tokenMint: mintAddr,
-        tokenProgram: TOKEN_PROGRAM,
+        tokenProgram,
         programAddress: PROGRAM_ADDRESS,
       });
 
