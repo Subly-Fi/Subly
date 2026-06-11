@@ -73,11 +73,18 @@ cmd_up() {
   command -v solana-keygen >/dev/null || die "solana-keygen bulunamadı"
   command -v surfpool >/dev/null || die "surfpool bulunamadı → brew install txtx/taps/surfpool"
 
-  # ── 2. Varsayılan keypair (fee payer) ────────────────────────────────────
+  # ── 2. Varsayılan keypair + CLI config (fee payer / default signer) ──────
   if [[ ! -f "$HOME/.config/solana/id.json" ]]; then
     log "Varsayılan solana keypair yok, oluşturuluyor..."
     solana-keygen new --no-bip39-passphrase --silent
   fi
+  # spl-token "default signer" için ~/.config/solana/cli/config.yml ister;
+  # solana-keygen bunu OLUŞTURMAZ. Yoksa keypair'i işaret eden config yaz.
+  if [[ ! -f "$HOME/.config/solana/cli/config.yml" ]]; then
+    log "Solana CLI config'i yok, oluşturuluyor (keypair: ~/.config/solana/id.json)..."
+    solana config set --keypair "$HOME/.config/solana/id.json" >/dev/null
+  fi
+  FEE_PAYER_PUBKEY=$(solana-keygen pubkey "$HOME/.config/solana/id.json")
 
   # ── 3. Program binary'si (mainnet'ten dump — Rust toolchain gerekmez) ────
   if [[ ! -f "$SO_PATH" ]]; then
@@ -129,7 +136,8 @@ cmd_up() {
   log "✓ Program zincirde ($PROGRAM_ID)"
 
   # ── 7. Fee payer'a SOL ───────────────────────────────────────────────────
-  solana airdrop 10 --url "$RPC_URL" >/dev/null 2>&1 || true
+  solana airdrop 10 "$FEE_PAYER_PUBKEY" --url "$RPC_URL" >/dev/null 2>&1 \
+    || warn "Fee payer airdrop başarısız (devam ediliyor) — gerekirse: solana airdrop 10 $FEE_PAYER_PUBKEY --url $RPC_URL"
 
   # ── 8. Mock USDC + config.json (idempotent) ──────────────────────────────
   log "Test ortamı başlatılıyor (mock USDC, config)..."
