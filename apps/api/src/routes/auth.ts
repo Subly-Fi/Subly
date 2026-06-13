@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { createAuthToken, verifyWalletSignature } from '../lib/auth';
-import { supabase } from '../lib/supabase';
+import { requireSupabase } from '../lib/supabase';
 import { randomUUID } from 'crypto';
 
-const nonceStore = new Map<string, { nonce: string; expiresAt: number }>();
+const NONCE_TTL_MS = 5 * 60 * 1000;
 
 const challengeSchema = z.object({
   wallet: z.string().min(32).max(44),
@@ -27,10 +27,15 @@ export const auth = new Hono()
     const nonce = randomUUID();
     const message = `Sign this message to authenticate with Subly.\n\nWallet: ${parsed.data.wallet}\nNonce: ${nonce}`;
 
-    nonceStore.set(parsed.data.wallet, {
-      nonce,
-      expiresAt: Date.now() + 5 * 60 * 1000,
-    });
+    const db = requireSupabase();
+    await db.from('auth_nonces').upsert(
+      {
+        wallet: parsed.data.wallet,
+        nonce,
+        expires_at: new Date(Date.now() + NONCE_TTL_MS).toISOString(),
+      },
+      { onConflict: 'wallet' },
+    );
 
     return c.json({ data: { message, nonce } });
   })
@@ -42,12 +47,18 @@ export const auth = new Hono()
       return c.json({ error: 'Invalid payload', details: parsed.error.flatten() }, 400);
     }
 
-    const stored = nonceStore.get(parsed.data.wallet);
+    const db = requireSupabase();
+    const { data: stored } = await db
+      .from('auth_nonces')
+      .select('nonce, expires_at')
+      .eq('wallet', parsed.data.wallet)
+      .single();
+
     if (!stored || stored.nonce !== parsed.data.nonce) {
       return c.json({ error: 'Invalid or expired nonce' }, 401);
     }
-    if (Date.now() > stored.expiresAt) {
-      nonceStore.delete(parsed.data.wallet);
+    if (Date.now() > new Date(stored.expires_at).getTime()) {
+      await db.from('auth_nonces').delete().eq('wallet', parsed.data.wallet);
       return c.json({ error: 'Nonce expired' }, 401);
     }
 
@@ -58,21 +69,20 @@ export const auth = new Hono()
       return c.json({ error: 'Invalid signature' }, 401);
     }
 
-    nonceStore.delete(parsed.data.wallet);
+    // Single-use: consume the nonce so a signature can't be replayed.
+    await db.from('auth_nonces').delete().eq('wallet', parsed.data.wallet);
 
-    if (supabase) {
-      const { data: existing } = await supabase
-        .from('merchants')
-        .select('wallet')
-        .eq('wallet', parsed.data.wallet)
-        .single();
+    const { data: existing } = await db
+      .from('merchants')
+      .select('wallet')
+      .eq('wallet', parsed.data.wallet)
+      .single();
 
-      if (!existing) {
-        await supabase.from('merchants').insert({
-          wallet: parsed.data.wallet,
-          api_key: randomUUID(),
-        });
-      }
+    if (!existing) {
+      await db.from('merchants').insert({
+        wallet: parsed.data.wallet,
+        api_key: randomUUID(),
+      });
     }
 
     const token = await createAuthToken(parsed.data.wallet);
