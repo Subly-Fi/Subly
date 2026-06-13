@@ -60,23 +60,28 @@ export async function startEventListener() {
 async function poll() {
   if (!isRunning) return;
   try {
-    await pollOnce();
+    lastSignature = await indexOnce(lastSignature);
   } catch (err) {
     console.error('[indexer] Poll error:', err);
   }
   setTimeout(poll, POLL_INTERVAL_MS);
 }
 
-async function pollOnce() {
-  const newestFirst = await collectNewSignatures(lastSignature);
-  if (!newestFirst.length) return;
+/**
+ * Runs exactly one indexing cycle from a cursor and returns the advanced cursor.
+ * Stateless: the caller owns the cursor, so this is safe in a serverless cron
+ * (load cursor from DB → indexOnce → it persists the new cursor itself).
+ */
+async function indexOnce(cursorIn: string | null): Promise<string | null> {
+  const newestFirst = await collectNewSignatures(cursorIn);
+  if (!newestFirst.length) return cursorIn;
 
   // Process oldest -> newest so the persisted cursor only ever advances over
   // transactions we have fully handled. A processing failure stops the cycle
-  // and leaves the cursor at the last good signature, so we retry next poll
+  // and leaves the cursor at the last good signature, so we retry next cycle
   // (handlers are idempotent upserts, so re-processing is safe).
   const ordered = [...newestFirst].reverse();
-  let cursor = lastSignature;
+  let cursor = cursorIn;
 
   for (const sig of ordered) {
     if (sig.err) {
@@ -92,15 +97,32 @@ async function pollOnce() {
     }
   }
 
-  if (cursor && cursor !== lastSignature) {
-    lastSignature = cursor;
-    if (supabase) {
-      await supabase.from('indexer_state').upsert(
-        { program: PROGRAM_ID_STR, last_signature: cursor, updated_at: new Date().toISOString() },
-        { onConflict: 'program' },
-      );
-    }
+  if (cursor && cursor !== cursorIn && supabase) {
+    await supabase.from('indexer_state').upsert(
+      { program: PROGRAM_ID_STR, last_signature: cursor, updated_at: new Date().toISOString() },
+      { onConflict: 'program' },
+    );
   }
+  return cursor;
+}
+
+/**
+ * One-shot indexing cycle for serverless cron. Loads the persisted cursor,
+ * processes any new transactions, and persists the advanced cursor. Returns a
+ * small summary for the cron response.
+ */
+export async function runIndexerCycle(): Promise<{ from: string | null; to: string | null; processed: boolean }> {
+  let cursor: string | null = null;
+  if (supabase) {
+    const { data } = await supabase
+      .from('indexer_state')
+      .select('last_signature')
+      .eq('program', PROGRAM_ID_STR)
+      .single();
+    cursor = data?.last_signature ?? null;
+  }
+  const next = await indexOnce(cursor);
+  return { from: cursor, to: next, processed: next !== cursor };
 }
 
 /**

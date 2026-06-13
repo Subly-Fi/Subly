@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
+  "buildCommand": "cd ../.. && bash scripts/build-api.sh",
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 60
+    }
+  },
+  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
+  "crons": [
+    { "path": "/cron/index", "schedule": "0 * * * *" },
+    { "path": "/cron/collect-payments", "schedule": "0 0 * * *" }
+  ]
+}
