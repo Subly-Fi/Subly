@@ -1,0 +1,143 @@
+/**
+ * Real on-chain subscribe flow for the hosted checkout. Mirrors the logic in
+ * @subly/ui's SubscribeButton but exposed as a plain async helper so the
+ * checkout page keeps full control of its UI/state.
+ */
+import {
+    type TransactionSigner,
+    address,
+    pipe,
+    createSolanaRpc,
+    createTransactionMessage,
+    setTransactionMessageFeePayerSigner,
+    setTransactionMessageLifetimeUsingBlockhash,
+    appendTransactionMessageInstruction,
+    signAndSendTransactionMessageWithSigners,
+} from '@solana/kit';
+import { findAssociatedTokenPda } from '@solana-program/token';
+import {
+    getSubscribeOverlayInstructionAsync,
+    getInitSubscriptionAuthorityOverlayInstructionAsync,
+    findSubscriptionAuthorityPda,
+    fetchMaybePlan,
+    fetchPlan,
+    fetchSubscriptionAuthority,
+} from '@subscriptions/client';
+import { PROGRAM_ADDRESS, rpcUrlForNetwork, type CheckoutNetwork } from './checkout-clusters';
+
+export interface ResolvedPlan {
+    planAddress: string;
+    owner: string;
+    planId: bigint;
+    mint: string;
+    amount: bigint;
+    periodHours: number;
+    metadataUri: string;
+    name?: string;
+}
+
+const TOKEN_PROGRAM_LEGACY = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+
+function parsePlanName(metadataUri: string): string | undefined {
+    try {
+        const meta = JSON.parse(metadataUri) as { n?: string };
+        return meta.n;
+    } catch {
+        return undefined;
+    }
+}
+
+/** Reads the Plan account on-chain and returns everything checkout needs. */
+export async function resolvePlan(planAddress: string, network: CheckoutNetwork): Promise<ResolvedPlan> {
+    const rpc = createSolanaRpc(rpcUrlForNetwork(network));
+    const maybe = await fetchMaybePlan(rpc as never, address(planAddress));
+    if (!maybe.exists) throw new Error('Plan not found on-chain');
+    const p = maybe.data;
+    return {
+        planAddress,
+        owner: String(p.owner),
+        planId: p.data.planId,
+        mint: String(p.data.mint),
+        amount: p.data.terms.amount,
+        periodHours: Number(p.data.terms.periodHours),
+        metadataUri: p.data.metadataUri,
+        name: parsePlanName(p.data.metadataUri),
+    };
+}
+
+async function resolveTokenProgram(rpc: ReturnType<typeof createSolanaRpc>, mint: ReturnType<typeof address>) {
+    const info = await rpc.getAccountInfo(mint, { encoding: 'base64' }).send();
+    return info.value ? address(String(info.value.owner)) : address(TOKEN_PROGRAM_LEGACY);
+}
+
+/**
+ * Initializes the subscriber's SubscriptionAuthority for this mint (if needed)
+ * then sends a plan-verified subscribe transaction. Returns the subscribe tx
+ * signature. Throws on user rejection or chain error.
+ */
+export async function subscribeToPlan(
+    plan: ResolvedPlan,
+    signer: TransactionSigner,
+    network: CheckoutNetwork,
+): Promise<string> {
+    const rpcUrl = rpcUrlForNetwork(network);
+    const rpc = createSolanaRpc(rpcUrl);
+    const progAddr = address(PROGRAM_ADDRESS);
+    const mint = address(plan.mint);
+    const merchant = address(plan.owner);
+    const subscriber = signer.address;
+
+    const tokenProgram = await resolveTokenProgram(rpc, mint);
+
+    const [saPda] = await findSubscriptionAuthorityPda(
+        { tokenMint: mint, user: subscriber },
+        { programAddress: progAddr },
+    );
+
+    // 1. Init SubscriptionAuthority if it does not exist yet.
+    const saAccount = await rpc.getAccountInfo(saPda, { encoding: 'base64' }).send();
+    if (!saAccount.value) {
+        const [userAta] = await findAssociatedTokenPda({ mint, owner: subscriber, tokenProgram });
+        const initIx = await getInitSubscriptionAuthorityOverlayInstructionAsync({
+            owner: signer,
+            tokenMint: mint,
+            tokenProgram,
+            userAta,
+            programAddress: progAddr,
+        });
+        const { value: bh } = await rpc.getLatestBlockhash().send();
+        const initMsg = pipe(
+            createTransactionMessage({ version: 0 }),
+            m => setTransactionMessageFeePayerSigner(signer, m),
+            m => setTransactionMessageLifetimeUsingBlockhash(bh, m),
+            m => appendTransactionMessageInstruction(initIx, m),
+        );
+        await signAndSendTransactionMessageWithSigners(initMsg);
+    }
+
+    // 2. Subscribe with on-chain-verified plan terms.
+    const planAccount = await fetchPlan(rpc as never, address(plan.planAddress));
+    const saData = await fetchSubscriptionAuthority(rpc as never, saPda);
+
+    const subscribeIx = await getSubscribeOverlayInstructionAsync({
+        merchant,
+        subscriber: signer,
+        planId: plan.planId,
+        tokenMint: mint,
+        expectedAmount: planAccount.data.data.terms.amount,
+        expectedPeriodHours: planAccount.data.data.terms.periodHours,
+        expectedCreatedAt: planAccount.data.data.terms.createdAt,
+        expectedSubscriptionAuthorityInitId: saData.data.initId,
+        programAddress: progAddr,
+    });
+
+    const { value: bh2 } = await rpc.getLatestBlockhash().send();
+    const subMsg = pipe(
+        createTransactionMessage({ version: 0 }),
+        m => setTransactionMessageFeePayerSigner(signer, m),
+        m => setTransactionMessageLifetimeUsingBlockhash(bh2, m),
+        m => appendTransactionMessageInstruction(subscribeIx, m),
+    );
+    const sig = await signAndSendTransactionMessageWithSigners(subMsg);
+    return typeof sig === 'string' ? sig : String(sig);
+}
