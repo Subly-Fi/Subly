@@ -5,7 +5,10 @@ export const metadata = {
   description: 'Access the Subly merchant dashboard for managing subscriptions on Solana.',
 };
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.subly.fi';
+// subly.fi/app is the public entry point to the merchant dashboard; it
+// redirects to wherever the dashboard (apps/merchant) is deployed. Set
+// NEXT_PUBLIC_APP_URL to that deployment URL.
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://subly-merchant.vercel.app';
 
 export default function AppPage() {
   redirect(APP_URL);
