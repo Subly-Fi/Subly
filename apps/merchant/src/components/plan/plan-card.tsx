@@ -11,6 +11,7 @@ import {
     Star,
     Plus,
     X,
+    Share2,
 } from 'lucide-react';
 import { Badge, Button as SolanaButton, Select, SelectItem, TextInput } from '@solana/design-system';
 import { Card, CardContent } from '@/components/ui/card';
@@ -38,6 +39,7 @@ import type { PlanItem } from '@/hooks/use-plans';
 import { useMySubscriptions, useSubscriberCount } from '@/hooks/use-subscriptions';
 import { PLAN_ICONS, ICON_MAP, parsePlanMeta, type PlanMeta } from '@/lib/plan-constants';
 import { ExplorerLink } from '@/components/cluster/cluster-ui';
+import { ShareCheckoutDialog } from '@/components/plan/share-checkout-dialog';
 
 function ImmutableField({ label, value }: { label: string; value: string }) {
     return (
@@ -653,6 +655,7 @@ export function PlanCard({
     const [editOpen, setEditOpen] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [subscribeOpen, setSubscribeOpen] = useState(false);
+    const [shareOpen, setShareOpen] = useState(false);
     const { data: mySubscriptions } = useMySubscriptions();
     const matchingSub = useMemo(
         () => mySubscriptions?.find(s => s.subscription.header.delegatee === plan.address) ?? null,
@@ -870,6 +873,20 @@ export function PlanCard({
 
                     {variant === 'owner' && (
                         <div className="flex items-center gap-2 pt-2 border-t border-sand-200">
+                            {!planExpired && !isSunset && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={(e: React.MouseEvent) => {
+                                        e.stopPropagation();
+                                        setShareOpen(true);
+                                    }}
+                                    className="flex-1 border-foreground bg-foreground text-background hover:bg-foreground/90"
+                                >
+                                    <Share2 className="h-3.5 w-3.5 mr-1.5" />
+                                    Share
+                                </Button>
+                            )}
                             {!planExpired && (
                                 <Button
                                     variant="outline"
@@ -879,7 +896,7 @@ export function PlanCard({
                                         setEditOpen(true);
                                     }}
                                     disabled={isSunset}
-                                    className="flex-1 border-foreground bg-foreground text-background hover:bg-foreground/90"
+                                    className="flex-1"
                                 >
                                     <Pencil className="h-3.5 w-3.5 mr-1.5" />
                                     Edit
@@ -906,6 +923,12 @@ export function PlanCard({
                 <>
                     <EditPlanDialog plan={plan} meta={meta} open={editOpen} onOpenChange={setEditOpen} />
                     <DeletePlanDialog plan={plan} meta={meta} open={deleteOpen} onOpenChange={setDeleteOpen} />
+                    <ShareCheckoutDialog
+                        planAddress={plan.address}
+                        planName={meta.n || ''}
+                        open={shareOpen}
+                        onOpenChange={setShareOpen}
+                    />
                 </>
             )}
             {variant === 'marketplace' && (
