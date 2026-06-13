@@ -52,7 +52,7 @@ stop_one() {
 }
 
 cmd_stop() {
-  for s in vite subly-api local-api surfpool; do stop_one "$s"; done
+  for s in web vite subly-api local-api surfpool; do stop_one "$s"; done
   pkill -f 'surfpool start' 2>/dev/null || true
   log "tamamlandı."
 }
@@ -74,7 +74,7 @@ cmd_restart_api() {
 }
 
 cmd_status() {
-  for entry in "surfpool:8899" "local-api:3001" "subly-api:3002" "vite:5173"; do
+  for entry in "surfpool:8899" "local-api:3001" "subly-api:3002" "vite:5173" "web:3000"; do
     local_name="${entry%%:*}"; local_port="${entry##*:}"
     if port_open "$local_port"; then echo "  ✓ $local_name (:$local_port) çalışıyor"; else echo "  ✗ $local_name (:$local_port) kapalı"; fi
   done
@@ -183,10 +183,21 @@ VITE_LOCALNET_PROGRAM=$PROGRAM_ID
 VITE_LOCALNET_USDC_MINT=$USDC_MINT
 VITE_API_URL=http://localhost:3001
 VITE_SUBLY_API_URL=http://localhost:3002
+VITE_SUBLY_PULLER_ADDRESS=$SIGNER_ADDRESS
+VITE_CHECKOUT_BASE_URL=http://localhost:3000
 EOF
   log "✓ apps/merchant/.env.local yazıldı"
 
   API_ENV="$ROOT/apps/api/.env.local"
+  # Web (subly.fi) checkout needs to reach the localnet RPC + program.
+  WEB_ENV="$ROOT/apps/web/.env.local"
+  cat > "$WEB_ENV" <<EOF
+# scripts/demo-local.sh tarafından üretildi
+NEXT_PUBLIC_PROGRAM_ADDRESS=$PROGRAM_ID
+NEXT_PUBLIC_LOCALNET_RPC_URL=$RPC_URL
+EOF
+  log "✓ apps/web/.env.local yazıldı"
+
   if [[ -f "$API_ENV" ]] && grep -q "SUPABASE_SERVICE_ROLE_KEY=ey" "$API_ENV" 2>/dev/null; then
     # Service role anahtarı elle girilmiş — koru, sadece localnet alanlarını tazele.
     EXISTING_KEY=$(grep '^SUPABASE_SERVICE_ROLE_KEY=' "$API_ENV" | cut -d= -f2-)
@@ -235,11 +246,17 @@ EOF
     start_bg vite "$ROOT/apps/merchant" pnpm run dev
   fi
 
+  # Web (subly.fi) — hosts the customer checkout at :3000.
+  if port_open 3000; then log "✓ web zaten çalışıyor"; else
+    start_bg web "$ROOT/apps/web" pnpm run dev
+  fi
+
   sleep 3
   echo
   log "════════════════════════════════════════════════════════════"
   log " Demo stack hazır 🎬"
   log "   Dashboard      → http://localhost:5173"
+  log "   Checkout (web) → http://localhost:3000/checkout?plan=<PLAN>&network=localnet"
   log "   Validator      → $RPC_URL  (time-travel destekli)"
   log "   Subly API      → http://localhost:3002"
   log "   Mock USDC mint → $USDC_MINT"
