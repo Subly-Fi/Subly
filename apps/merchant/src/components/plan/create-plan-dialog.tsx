@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useSubscriptionsMutations } from '@/hooks/use-subscriptions-mutations';
 import { useUsdcMint } from '@/hooks/use-token-config';
-import { cn, USDC_MULTIPLIER } from '@/lib/utils';
+import { useSublyPuller } from '@/hooks/use-subly-puller';
+import { cn, USDC_MULTIPLIER, ellipsify } from '@/lib/utils';
 import { getBlockTimestamp } from '@/hooks/use-time-travel';
 import { useClusterConfig } from '@/hooks/use-cluster-config';
 import { PLAN_ICONS } from '@/lib/plan-constants';
@@ -72,9 +73,11 @@ export function CreatePlanDialog({ open, onOpenChange }: CreatePlanDialogProps) 
     const [endHour, setEndHour] = useState('12');
     const [destinations, setDestinations] = useState<string[]>([]);
     const [pullers, setPullers] = useState<string[]>([]);
+    const [sublyManaged, setSublyManaged] = useState(true);
 
     const { createPlan } = useSubscriptionsMutations();
     const usdcMint = useUsdcMint();
+    const sublyPuller = useSublyPuller();
     const { url: rpcUrl } = useClusterConfig();
     const [blockTime, setBlockTime] = useState<number | undefined>();
 
@@ -112,6 +115,7 @@ export function CreatePlanDialog({ open, onOpenChange }: CreatePlanDialogProps) 
         setEndHour('12');
         setDestinations([]);
         setPullers([]);
+        setSublyManaged(true);
     };
 
     const handleOpenChange = (next: boolean) => {
@@ -170,7 +174,14 @@ export function CreatePlanDialog({ open, onOpenChange }: CreatePlanDialogProps) 
         const endTs = Number.isNaN(endTsRaw) ? 0 : endTsRaw;
 
         const filteredDestinations = destinations.filter(d => d.length > 0);
-        const filteredPullers = pullers.filter(p => p.length > 0);
+        const manualPullers = pullers.filter(p => p.length > 0);
+
+        // When Subly-managed, prepend the Subly collector so the backend cron can
+        // charge subscribers automatically. Dedupe and cap at the on-chain max (4).
+        const effectivePullers =
+            sublyManaged && sublyPuller
+                ? [sublyPuller, ...manualPullers.filter(p => p !== sublyPuller)].slice(0, 4)
+                : manualPullers;
 
         await createPlan.mutateAsync(
             {
@@ -180,7 +191,7 @@ export function CreatePlanDialog({ open, onOpenChange }: CreatePlanDialogProps) 
                 periodHours,
                 endTs,
                 destinations: filteredDestinations,
-                pullers: filteredPullers,
+                pullers: effectivePullers,
                 metadataUri: metadataJson,
             },
             { onSuccess: () => handleOpenChange(false) },
@@ -432,6 +443,36 @@ export function CreatePlanDialog({ open, onOpenChange }: CreatePlanDialogProps) 
                             )}
                         </div>
 
+                        {sublyPuller && (
+                            <div className="sm:col-span-2">
+                                <label
+                                    className={cn(
+                                        'flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-colors',
+                                        sublyManaged
+                                            ? 'border-foreground bg-sand-100'
+                                            : 'border-sand-300 hover:border-sand-400',
+                                    )}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={sublyManaged}
+                                        onChange={e => setSublyManaged(e.target.checked)}
+                                        className="mt-0.5 h-4 w-4 rounded border-sand-400 bg-card text-foreground focus:ring-foreground"
+                                    />
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-semibold text-foreground">
+                                            Let Subly collect payments automatically
+                                        </p>
+                                        <p className="text-xs text-sand-1100 mt-0.5">
+                                            Adds the Subly collector ({ellipsify(sublyPuller, 4)}) as an authorized
+                                            puller so subscribers are charged each period without you lifting a finger.
+                                            Uncheck to collect manually.
+                                        </p>
+                                    </div>
+                                </label>
+                            </div>
+                        )}
+
                         <div className="sm:col-span-2">
                             {renderAddressList(
                                 'Destinations',
@@ -442,10 +483,12 @@ export function CreatePlanDialog({ open, onOpenChange }: CreatePlanDialogProps) 
                         </div>
                         <div className="sm:col-span-2">
                             {renderAddressList(
-                                'Pullers',
+                                sublyManaged && sublyPuller ? 'Additional Pullers' : 'Pullers',
                                 pullers,
                                 setPullers,
-                                'Leave empty to restrict pulling to plan owner only (recommended).',
+                                sublyManaged && sublyPuller
+                                    ? 'The Subly collector is added automatically. Add extra addresses here if needed.'
+                                    : 'Leave empty to restrict pulling to plan owner only (recommended).',
                             )}
                         </div>
                     </div>
