@@ -7,9 +7,5 @@
       "maxDuration": 60
     }
   },
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
-  "crons": [
-    { "path": "/cron/index", "schedule": "0 * * * *" },
-    { "path": "/cron/collect-payments", "schedule": "0 0 * * *" }
-  ]
+  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
 }
