@@ -102,6 +102,18 @@ async function newestSignature(): Promise<string | null> {
  */
 async function indexOnce(cursorIn: string): Promise<string> {
   const newestFirst = await collectNewSignatures(cursorIn);
+
+  // Observability: `seen` = program transactions since the last cursor (i.e. the
+  // shared program's traffic in this cycle window). If `seen` keeps exceeding
+  // the per-cycle cap, the program is busy and we're falling behind — the signal
+  // to switch to per-plan polling. Grep Vercel logs for "[indexer][metric]".
+  const seen = newestFirst.length;
+  const batch = Math.min(seen, MAX_TX_PER_CYCLE);
+  console.log(
+    `[indexer][metric] seen=${seen} batch=${batch} cap=${MAX_TX_PER_CYCLE}` +
+      (seen > MAX_TX_PER_CYCLE ? ' BACKLOG' : ''),
+  );
+
   if (!newestFirst.length) return cursorIn;
 
   const ordered = [...newestFirst].reverse().slice(0, MAX_TX_PER_CYCLE);
