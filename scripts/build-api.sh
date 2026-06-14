@@ -21,4 +21,8 @@ echo "→ Type-checking @subly/api..."
 cd "$ROOT"
 pnpm --filter @subly/api build
 
-echo "→ API build complete (Vercel bundles api/index.ts)."
+echo "→ Bundling API handler into a single self-contained file (esbuild)..."
+cd "$ROOT/apps/api"
+node scripts/bundle-vercel.mjs
+
+echo "→ API build complete (function = api/index.ts → .vercel-bundle/handler.cjs)."

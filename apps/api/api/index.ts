@@ -1,12 +1,8 @@
-/**
- * Vercel serverless entry for the Subly backend.
- *
- * All routes from the Hono `app` are served through this single Node function;
- * `vercel.json` rewrites every path here. There is no long-lived process on
- * serverless, so the indexer runs as a scheduled cron (POST /cron/index) rather
- * than the persistent poll loop in src/index.ts (used for local / VPS hosting).
- */
-import { handle } from '@hono/node-server/vercel';
-import { app } from '../src/app';
+// @ts-nocheck
+// Vercel serverless function entry. The real handler is pre-bundled into a
+// single self-contained file by scripts/build-api.sh (esbuild) so the runtime
+// needs no module resolution of the linked @subscriptions/client or workspace
+// sources. `.default ?? mod` covers both ESM-bundled and CJS-interop cases.
+import mod from '../.vercel-bundle/handler.cjs';
 
-export default handle(app);
+export default mod.default ?? mod;
