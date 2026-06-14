@@ -60,58 +60,83 @@ export async function startEventListener() {
 async function poll() {
   if (!isRunning) return;
   try {
-    lastSignature = await indexOnce(lastSignature);
+    if (!lastSignature) {
+      lastSignature = await newestSignature(); // prime to now, no backfill
+    } else {
+      lastSignature = await indexOnce(lastSignature);
+    }
   } catch (err) {
     console.error('[indexer] Poll error:', err);
   }
   setTimeout(poll, POLL_INTERVAL_MS);
 }
 
+// The subscriptions program is SHARED across all Solana users, so a cycle could
+// see far more activity than just Subly's. Bound the work per serverless
+// invocation to stay well under the function time limit; QStash drives the next
+// cycle to catch up (cursor persisted incrementally so timeouts never lose it).
+const MAX_TX_PER_CYCLE = 40;
+const CURSOR_FLUSH_EVERY = 10;
+
+async function persistCursor(cursor: string): Promise<void> {
+  if (!supabase) return;
+  await supabase.from('indexer_state').upsert(
+    { program: PROGRAM_ID_STR, last_signature: cursor, updated_at: new Date().toISOString() },
+    { onConflict: 'program' },
+  );
+}
+
+/** Newest program signature, used to prime the cursor to "now" on first run. */
+async function newestSignature(): Promise<string | null> {
+  const sigs = (await rpc
+    .getSignaturesForAddress(PROGRAM_ADDRESS, { limit: 1, commitment: 'confirmed' } as never)
+    .send()) as unknown as RpcSignatureInfo[];
+  return sigs[0]?.signature ?? null;
+}
+
 /**
- * Runs exactly one indexing cycle from a cursor and returns the advanced cursor.
- * Stateless: the caller owns the cursor, so this is safe in a serverless cron
- * (load cursor from DB → indexOnce → it persists the new cursor itself).
+ * Runs one bounded indexing cycle from a cursor and returns the advanced cursor.
+ * Processes oldest -> newest (cursor only advances over fully-handled txs) and
+ * persists incrementally, so a serverless timeout never loses progress
+ * (handlers are idempotent upserts, so re-processing is safe).
  */
-async function indexOnce(cursorIn: string | null): Promise<string | null> {
+async function indexOnce(cursorIn: string): Promise<string> {
   const newestFirst = await collectNewSignatures(cursorIn);
   if (!newestFirst.length) return cursorIn;
 
-  // Process oldest -> newest so the persisted cursor only ever advances over
-  // transactions we have fully handled. A processing failure stops the cycle
-  // and leaves the cursor at the last good signature, so we retry next cycle
-  // (handlers are idempotent upserts, so re-processing is safe).
-  const ordered = [...newestFirst].reverse();
+  const ordered = [...newestFirst].reverse().slice(0, MAX_TX_PER_CYCLE);
   let cursor = cursorIn;
+  let sinceFlush = 0;
 
   for (const sig of ordered) {
     if (sig.err) {
       cursor = sig.signature; // failed tx carries no committed events — safe to skip
-      continue;
+    } else {
+      try {
+        await processTransaction(sig.signature);
+        cursor = sig.signature;
+      } catch (err) {
+        console.error(`[indexer] Failed to process tx ${sig.signature}:`, err);
+        break;
+      }
     }
-    try {
-      await processTransaction(sig.signature);
-      cursor = sig.signature;
-    } catch (err) {
-      console.error(`[indexer] Failed to process tx ${sig.signature}:`, err);
-      break;
+    if (++sinceFlush >= CURSOR_FLUSH_EVERY && cursor !== cursorIn) {
+      await persistCursor(cursor);
+      sinceFlush = 0;
     }
   }
 
-  if (cursor && cursor !== cursorIn && supabase) {
-    await supabase.from('indexer_state').upsert(
-      { program: PROGRAM_ID_STR, last_signature: cursor, updated_at: new Date().toISOString() },
-      { onConflict: 'program' },
-    );
-  }
+  if (cursor !== cursorIn) await persistCursor(cursor);
   return cursor;
 }
 
 /**
  * One-shot indexing cycle for serverless cron. Loads the persisted cursor,
- * processes any new transactions, and persists the advanced cursor. Returns a
- * small summary for the cron response.
+ * processes new transactions (bounded), and persists the advanced cursor.
+ * First run: prime the cursor to the newest signature WITHOUT backfilling the
+ * shared program's history (which would exceed the function time limit).
  */
-export async function runIndexerCycle(): Promise<{ from: string | null; to: string | null; processed: boolean }> {
+export async function runIndexerCycle(): Promise<{ from: string | null; to: string | null; processed: boolean; primed?: boolean }> {
   let cursor: string | null = null;
   if (supabase) {
     const { data } = await supabase
@@ -121,6 +146,14 @@ export async function runIndexerCycle(): Promise<{ from: string | null; to: stri
       .single();
     cursor = data?.last_signature ?? null;
   }
+
+  if (!cursor) {
+    const newest = await newestSignature();
+    if (newest) await persistCursor(newest);
+    console.log(`[indexer] primed cursor to ${newest ?? '(none)'} — indexing forward from now`);
+    return { from: null, to: newest, processed: false, primed: true };
+  }
+
   const next = await indexOnce(cursor);
   return { from: cursor, to: next, processed: next !== cursor };
 }
@@ -133,7 +166,9 @@ export async function runIndexerCycle(): Promise<{ from: string | null; to: stri
  */
 async function collectNewSignatures(until: string | null): Promise<RpcSignatureInfo[]> {
   const all: RpcSignatureInfo[] = [];
-  const maxPages = until ? 50 : 1;
+  // Bounded scan: priming keeps backlogs small, and processing is capped per
+  // cycle anyway, so a few pages is plenty (avoids draining a huge burst at once).
+  const maxPages = until ? 3 : 1;
   let before: string | undefined;
 
   for (let page = 0; page < maxPages; page++) {
