@@ -266,7 +266,8 @@ async function handleCreated(
   event: Extract<SublyEvent, { kind: SublyEventKind.SubscriptionCreated }>,
   signature: string,
 ) {
-  const merchant = await resolveMerchant(event.plan);
+  const merchant = await resolveSublyPlanOwner(event.plan);
+  if (!merchant) return; // not a Subly plan — skip
 
   await supabase!.from('subscriptions').upsert(
     {
@@ -301,7 +302,8 @@ async function handleCancelled(
   event: Extract<SublyEvent, { kind: SublyEventKind.SubscriptionCancelled }>,
   signature: string,
 ) {
-  const merchant = await resolveMerchant(event.plan);
+  const merchant = await resolveSublyPlanOwner(event.plan);
+  if (!merchant) return; // not a Subly plan — skip
 
   await supabase!
     .from('subscriptions')
@@ -331,7 +333,8 @@ async function handleResumed(
   event: Extract<SublyEvent, { kind: SublyEventKind.SubscriptionResumed }>,
   signature: string,
 ) {
-  const merchant = await resolveMerchant(event.plan);
+  const merchant = await resolveSublyPlanOwner(event.plan);
+  if (!merchant) return; // not a Subly plan — skip
 
   await supabase!
     .from('subscriptions')
@@ -362,7 +365,8 @@ async function handleSubscriptionTransfer(
   signature: string,
   blockTime: number,
 ) {
-  const merchant = await resolveMerchant(event.plan);
+  const merchant = await resolveSublyPlanOwner(event.plan);
+  if (!merchant) return; // not a Subly plan — skip
 
   // Upsert on tx_signature so this and the cron collector's row for the same
   // on-chain transfer collapse into one (no double-counted revenue).
@@ -370,7 +374,7 @@ async function handleSubscriptionTransfer(
     {
       plan_address: event.plan,
       subscriber_wallet: event.delegator,
-      merchant_wallet: merchant ?? event.receiver,
+      merchant_wallet: merchant,
       amount: event.amount.toString(),
       mint: event.mint,
       tx_signature: signature,
@@ -425,6 +429,10 @@ async function handleDelegationTransfer(
   event: Extract<SublyEvent, { kind: SublyEventKind.FixedTransfer | SublyEventKind.RecurringTransfer }>,
   signature: string,
 ) {
+  // Subly-specific: raw delegation pulls aren't part of the subscription-plan
+  // product; only record ones the Subly collector itself made.
+  if (SUBLY_SIGNER && String(event.delegatee) !== SUBLY_SIGNER) return;
+
   await supabase!.from('payments').upsert(
     {
       plan_address: null,
@@ -453,47 +461,71 @@ async function handleDelegationTransfer(
   console.log(`[indexer] delegation transfer: ${event.delegator} -> ${event.delegatee} (${event.amount})`);
 }
 
+// Subly-specific filter. The subscriptions program is shared across all Solana
+// users, so we only index plans that authorize the Subly collector ("puller").
+// Set from SUBLY_SIGNER_ADDRESS; if unset we fall back to indexing everything.
+const SUBLY_SIGNER = process.env.SUBLY_SIGNER_ADDRESS?.trim() || null;
+// Per-instance cache: plan address -> owner wallet (Subly plan) or false (not ours).
+const planClassCache = new Map<string, string | false>();
+
 /**
- * Returns the merchant (plan owner) wallet for a plan address. Reads the local
- * `plans` mirror first; on a miss, fetches the Plan account on-chain, mirrors it
- * into `plans` (best-effort), and returns the on-chain owner. Returns null if the
- * plan does not exist on-chain.
+ * Returns the merchant (plan owner) wallet ONLY for Subly plans — those whose
+ * `pullers` include the Subly collector. Returns null for other merchants' plans
+ * (so they are skipped) and for non-existent plans. Reads the local `plans`
+ * mirror first (which only ever holds Subly plans); on a miss, fetches the Plan
+ * on-chain, checks the puller, and mirrors it if it's ours.
+ *
+ * Throws on RPC/DB failure so the caller leaves the cursor put and retries next
+ * cycle (never silently dropping a real Subly event).
  */
-async function resolveMerchant(planAddress: string): Promise<string | null> {
+async function resolveSublyPlanOwner(planAddress: string): Promise<string | null> {
+  const cached = planClassCache.get(planAddress);
+  if (cached !== undefined) return cached === false ? null : cached;
+
   const { data: planRow } = await supabase!
     .from('plans')
     .select('merchant_wallet')
     .eq('address', planAddress)
     .single();
-  if (planRow?.merchant_wallet) return planRow.merchant_wallet;
+  if (planRow?.merchant_wallet) {
+    planClassCache.set(planAddress, planRow.merchant_wallet);
+    return planRow.merchant_wallet;
+  }
 
-  try {
-    const maybe = await fetchMaybePlan(rpc as never, address(planAddress));
-    if (!maybe.exists) return null;
-
-    const plan = maybe.data;
-    const owner = String(plan.owner);
-    const status = plan.status === 1 ? 'active' : 'sunset';
-
-    await supabase!.from('plans').upsert(
-      {
-        address: planAddress,
-        merchant_wallet: owner,
-        mint: String(plan.data.mint),
-        amount: plan.data.terms.amount.toString(),
-        period_hours: Number(plan.data.terms.periodHours),
-        status,
-        on_chain_status: status,
-        plan_id: plan.data.planId.toString(),
-        metadata_uri: plan.data.metadataUri || null,
-      },
-      { onConflict: 'address' },
-    );
-    return owner;
-  } catch (err) {
-    console.error(`[indexer] Failed to resolve plan ${planAddress}:`, err);
+  const maybe = await fetchMaybePlan(rpc as never, address(planAddress));
+  if (!maybe.exists) {
+    planClassCache.set(planAddress, false);
     return null;
   }
+
+  const plan = maybe.data;
+  const owner = String(plan.owner);
+
+  // The defining Subly check: is the Subly collector an authorized puller?
+  const pullers = (plan.data.pullers ?? []).map((p) => String(p));
+  const isSubly = SUBLY_SIGNER ? pullers.includes(SUBLY_SIGNER) : true;
+  if (!isSubly) {
+    planClassCache.set(planAddress, false);
+    return null;
+  }
+
+  const status = plan.status === 1 ? 'active' : 'sunset';
+  await supabase!.from('plans').upsert(
+    {
+      address: planAddress,
+      merchant_wallet: owner,
+      mint: String(plan.data.mint),
+      amount: plan.data.terms.amount.toString(),
+      period_hours: Number(plan.data.terms.periodHours),
+      status,
+      on_chain_status: status,
+      plan_id: plan.data.planId.toString(),
+      metadata_uri: plan.data.metadataUri || null,
+    },
+    { onConflict: 'address' },
+  );
+  planClassCache.set(planAddress, owner);
+  return owner;
 }
 
 export function stopEventListener() {
