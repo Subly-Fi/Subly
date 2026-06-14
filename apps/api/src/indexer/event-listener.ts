@@ -1,15 +1,18 @@
 import { address } from '@solana/kit';
-import { fetchMaybePlan } from '@subscriptions/client';
 import { supabase } from '../lib/supabase';
 import { rpc, PROGRAM_ADDRESS } from '../lib/solana';
 import { dispatchMerchantWebhook } from '../lib/webhook-dispatcher';
 import { decodeSublyEventFromBase58, SublyEventKind, type SublyEvent } from './events';
 
-const POLL_INTERVAL_MS = 15_000;
+const POLL_INTERVAL_MS = 30_000;
 const SIGNATURE_PAGE_LIMIT = 1000;
 const PROGRAM_ID_STR = String(PROGRAM_ADDRESS);
+// Per-cycle bounds so a serverless invocation stays well under the time limit.
+const MAX_PAGES_PER_PLAN = 5; // a plan's own history is small; cap anyway
+const MAX_TX_PER_PLAN = 40;
+const MAX_TX_PER_CYCLE = 200;
+const CURSOR_FLUSH_EVERY = 10;
 
-let lastSignature: string | null = null;
 let isRunning = false;
 
 // ---------------------------------------------------------------------------
@@ -40,165 +43,159 @@ interface RpcSignatureInfo {
 export async function startEventListener() {
   if (isRunning) return;
   isRunning = true;
-
-  console.log('[indexer] Starting event listener for program:', PROGRAM_ID_STR);
-
-  if (supabase) {
-    const { data } = await supabase
-      .from('indexer_state')
-      .select('last_signature')
-      .eq('program', PROGRAM_ID_STR)
-      .single();
-    if (data?.last_signature) {
-      lastSignature = data.last_signature;
-    }
-  }
-
+  console.log('[indexer] Starting per-plan event listener');
   poll();
 }
 
 async function poll() {
   if (!isRunning) return;
   try {
-    if (!lastSignature) {
-      lastSignature = await newestSignature(); // prime to now, no backfill
-    } else {
-      lastSignature = await indexOnce(lastSignature);
-    }
+    await runIndexerCycle();
   } catch (err) {
     console.error('[indexer] Poll error:', err);
   }
   setTimeout(poll, POLL_INTERVAL_MS);
 }
 
-// The subscriptions program is SHARED across all Solana users, so a cycle could
-// see far more activity than just Subly's. Bound the work per serverless
-// invocation to stay well under the function time limit; QStash drives the next
-// cycle to catch up (cursor persisted incrementally so timeouts never lose it).
-const MAX_TX_PER_CYCLE = 40;
-const CURSOR_FLUSH_EVERY = 10;
+// ── Per-plan cursor storage (plan_index_state) ─────────────────────────────
+async function loadPlanCursor(planAddress: string): Promise<string | null> {
+  if (!supabase) return null;
+  const { data } = await supabase
+    .from('plan_index_state')
+    .select('last_signature')
+    .eq('plan_address', planAddress)
+    .single();
+  return data?.last_signature ?? null;
+}
 
-async function persistCursor(cursor: string): Promise<void> {
+async function persistPlanCursor(planAddress: string, sig: string): Promise<void> {
   if (!supabase) return;
-  await supabase.from('indexer_state').upsert(
-    { program: PROGRAM_ID_STR, last_signature: cursor, updated_at: new Date().toISOString() },
-    { onConflict: 'program' },
+  await supabase.from('plan_index_state').upsert(
+    { plan_address: planAddress, last_signature: sig, updated_at: new Date().toISOString() },
+    { onConflict: 'plan_address' },
   );
 }
 
-/** Newest program signature, used to prime the cursor to "now" on first run. */
-async function newestSignature(): Promise<string | null> {
-  const sigs = (await rpc
-    .getSignaturesForAddress(PROGRAM_ADDRESS, { limit: 1, commitment: 'confirmed' } as never)
-    .send()) as unknown as RpcSignatureInfo[];
-  return sigs[0]?.signature ?? null;
-}
-
 /**
- * Runs one bounded indexing cycle from a cursor and returns the advanced cursor.
- * Processes oldest -> newest (cursor only advances over fully-handled txs) and
- * persists incrementally, so a serverless timeout never loses progress
- * (handlers are idempotent upserts, so re-processing is safe).
+ * Fetches one plan PDA's signatures newer than `until` (newest-first). A plan's
+ * own history is small, so a few pages is plenty. With no cursor we backfill the
+ * plan's full history, capturing any subscriptions made before it was registered.
  */
-async function indexOnce(cursorIn: string): Promise<string> {
-  const newestFirst = await collectNewSignatures(cursorIn);
-
-  // Observability: `seen` = program transactions since the last cursor (i.e. the
-  // shared program's traffic in this cycle window). If `seen` keeps exceeding
-  // the per-cycle cap, the program is busy and we're falling behind — the signal
-  // to switch to per-plan polling. Grep Vercel logs for "[indexer][metric]".
-  const seen = newestFirst.length;
-  const batch = Math.min(seen, MAX_TX_PER_CYCLE);
-  console.log(
-    `[indexer][metric] seen=${seen} batch=${batch} cap=${MAX_TX_PER_CYCLE}` +
-      (seen > MAX_TX_PER_CYCLE ? ' BACKLOG' : ''),
-  );
-
-  if (!newestFirst.length) return cursorIn;
-
-  const ordered = [...newestFirst].reverse().slice(0, MAX_TX_PER_CYCLE);
-  let cursor = cursorIn;
-  let sinceFlush = 0;
-
-  for (const sig of ordered) {
-    if (sig.err) {
-      cursor = sig.signature; // failed tx carries no committed events — safe to skip
-    } else {
-      try {
-        await processTransaction(sig.signature);
-        cursor = sig.signature;
-      } catch (err) {
-        console.error(`[indexer] Failed to process tx ${sig.signature}:`, err);
-        break;
-      }
-    }
-    if (++sinceFlush >= CURSOR_FLUSH_EVERY && cursor !== cursorIn) {
-      await persistCursor(cursor);
-      sinceFlush = 0;
-    }
-  }
-
-  if (cursor !== cursorIn) await persistCursor(cursor);
-  return cursor;
-}
-
-/**
- * One-shot indexing cycle for serverless cron. Loads the persisted cursor,
- * processes new transactions (bounded), and persists the advanced cursor.
- * First run: prime the cursor to the newest signature WITHOUT backfilling the
- * shared program's history (which would exceed the function time limit).
- */
-export async function runIndexerCycle(): Promise<{ from: string | null; to: string | null; processed: boolean; primed?: boolean }> {
-  let cursor: string | null = null;
-  if (supabase) {
-    const { data } = await supabase
-      .from('indexer_state')
-      .select('last_signature')
-      .eq('program', PROGRAM_ID_STR)
-      .single();
-    cursor = data?.last_signature ?? null;
-  }
-
-  if (!cursor) {
-    const newest = await newestSignature();
-    if (newest) await persistCursor(newest);
-    console.log(`[indexer] primed cursor to ${newest ?? '(none)'} — indexing forward from now`);
-    return { from: null, to: newest, processed: false, primed: true };
-  }
-
-  const next = await indexOnce(cursor);
-  return { from: cursor, to: next, processed: next !== cursor };
-}
-
-/**
- * Fetches all program signatures newer than `until` (newest-first), paginating
- * with `before` to drain bursts. On the first run (no cursor) only the most
- * recent page is taken so we begin indexing from "now" rather than backfilling
- * the program's entire history.
- */
-async function collectNewSignatures(until: string | null): Promise<RpcSignatureInfo[]> {
+async function collectPlanSignatures(planAddress: string, until: string | null): Promise<RpcSignatureInfo[]> {
   const all: RpcSignatureInfo[] = [];
-  // Bounded scan: priming keeps backlogs small, and processing is capped per
-  // cycle anyway, so a few pages is plenty (avoids draining a huge burst at once).
-  const maxPages = until ? 3 : 1;
   let before: string | undefined;
-
-  for (let page = 0; page < maxPages; page++) {
+  for (let page = 0; page < MAX_PAGES_PER_PLAN; page++) {
     const params: Record<string, unknown> = { limit: SIGNATURE_PAGE_LIMIT, commitment: 'confirmed' };
     if (until) params.until = until;
     if (before) params.before = before;
-
     const sigs = (await rpc
-      .getSignaturesForAddress(PROGRAM_ADDRESS, params as never)
+      .getSignaturesForAddress(address(planAddress), params as never)
       .send()) as unknown as RpcSignatureInfo[];
-
     if (!sigs.length) break;
     all.push(...sigs);
     if (sigs.length < SIGNATURE_PAGE_LIMIT) break;
     before = sigs[sigs.length - 1].signature;
   }
-
   return all;
+}
+
+/** Oldest-first, capped batch from a newest-first signature list. Pure (tested). */
+export function selectIndexBatch<T>(newestFirst: readonly T[], cap: number): T[] {
+  return [...newestFirst].reverse().slice(0, cap);
+}
+
+/** Injected dependencies so the per-plan orchestrator is unit-testable. */
+export interface PlanIndexDeps {
+  loadCursor(plan: string): Promise<string | null>;
+  collectSignatures(plan: string, until: string | null): Promise<RpcSignatureInfo[]>;
+  process(signature: string): Promise<void>;
+  saveCursor(plan: string, sig: string): Promise<void>;
+  cap: number;
+  flushEvery: number;
+}
+
+/**
+ * Indexes one plan: load cursor → collect new signatures → process oldest→newest,
+ * capped, advancing & flushing the cursor incrementally so a timeout never loses
+ * progress (handlers are idempotent upserts). RPC/DB are injected via `deps`.
+ */
+export async function indexPlanCore(
+  deps: PlanIndexDeps,
+  planAddress: string,
+): Promise<{ seen: number; processed: number; to: string | null }> {
+  const cursor = await deps.loadCursor(planAddress);
+  const newestFirst = await deps.collectSignatures(planAddress, cursor);
+  const seen = newestFirst.length;
+  if (!seen) return { seen: 0, processed: 0, to: cursor };
+
+  const batch = selectIndexBatch(newestFirst, deps.cap);
+  let cur = cursor;
+  let processed = 0;
+  let sinceFlush = 0;
+
+  for (const sig of batch) {
+    if (sig.err) {
+      cur = sig.signature; // failed tx carries no committed events — safe to skip
+    } else {
+      try {
+        await deps.process(sig.signature);
+        cur = sig.signature;
+        processed++;
+      } catch (err) {
+        console.error(`[indexer] Failed to process tx ${sig.signature}:`, err);
+        break;
+      }
+    }
+    if (++sinceFlush >= deps.flushEvery && cur && cur !== cursor) {
+      await deps.saveCursor(planAddress, cur);
+      sinceFlush = 0;
+    }
+  }
+
+  if (cur && cur !== cursor) await deps.saveCursor(planAddress, cur);
+  return { seen, processed, to: cur };
+}
+
+function realDeps(cap: number): PlanIndexDeps {
+  return {
+    loadCursor: loadPlanCursor,
+    collectSignatures: collectPlanSignatures,
+    process: processTransaction,
+    saveCursor: persistPlanCursor,
+    cap,
+    flushEvery: CURSOR_FLUSH_EVERY,
+  };
+}
+
+/**
+ * One indexing cycle: poll every registered Subly plan PDA. Cost scales with
+ * Subly's own plans (zero plans → one DB read, zero RPC). Work is bounded across
+ * plans per cycle; each plan is isolated, so one plan's failure leaves its cursor
+ * put (retried next cycle) without blocking the others.
+ */
+export async function runIndexerCycle(): Promise<{ plans: number; seen: number; processed: number }> {
+  if (!supabase) return { plans: 0, seen: 0, processed: 0 };
+
+  const { data: plans } = await supabase.from('plans').select('address').neq('status', 'deleted');
+  const list = plans ?? [];
+  let totalSeen = 0;
+  let totalProcessed = 0;
+  let budget = MAX_TX_PER_CYCLE;
+
+  for (const { address: planAddress } of list) {
+    if (budget <= 0) break;
+    try {
+      const r = await indexPlanCore(realDeps(Math.min(MAX_TX_PER_PLAN, budget)), planAddress);
+      totalSeen += r.seen;
+      totalProcessed += r.processed;
+      budget -= r.processed;
+    } catch (err) {
+      console.error(`[indexer] plan ${planAddress} cycle failed:`, err);
+    }
+  }
+
+  console.log(`[indexer][metric] plans=${list.length} seen=${totalSeen} processed=${totalProcessed}`);
+  return { plans: list.length, seen: totalSeen, processed: totalProcessed };
 }
 
 async function processTransaction(signature: string) {
@@ -473,70 +470,30 @@ async function handleDelegationTransfer(
   console.log(`[indexer] delegation transfer: ${event.delegator} -> ${event.delegatee} (${event.amount})`);
 }
 
-// Subly-specific filter. The subscriptions program is shared across all Solana
-// users, so we only index plans that authorize the Subly collector ("puller").
-// Set from SUBLY_SIGNER_ADDRESS; if unset we fall back to indexing everything.
+// The Subly collector address; used to filter raw delegation pulls (subscription
+// plans are already filtered by polling only registered plan PDAs).
 const SUBLY_SIGNER = process.env.SUBLY_SIGNER_ADDRESS?.trim() || null;
-// Per-instance cache: plan address -> owner wallet (Subly plan) or false (not ours).
-const planClassCache = new Map<string, string | false>();
+// Per-instance cache: plan address -> owner wallet, or false if not a Subly plan.
+const planOwnerCache = new Map<string, string | false>();
 
 /**
- * Returns the merchant (plan owner) wallet ONLY for Subly plans — those whose
- * `pullers` include the Subly collector. Returns null for other merchants' plans
- * (so they are skipped) and for non-existent plans. Reads the local `plans`
- * mirror first (which only ever holds Subly plans); on a miss, fetches the Plan
- * on-chain, checks the puller, and mirrors it if it's ours.
- *
- * Throws on RPC/DB failure so the caller leaves the cursor put and retries next
- * cycle (never silently dropping a real Subly event).
+ * Returns the merchant (plan owner) wallet for a plan, read from the `plans`
+ * mirror. Plans are written there at registration (POST /merchants/plans/sync),
+ * so a registered Subly plan resolves to its owner; anything else (e.g. a
+ * stranger's plan that appeared in a multi-plan tx) resolves to null and is
+ * skipped. No RPC — purely a cached DB lookup.
  */
 async function resolveSublyPlanOwner(planAddress: string): Promise<string | null> {
-  const cached = planClassCache.get(planAddress);
+  const cached = planOwnerCache.get(planAddress);
   if (cached !== undefined) return cached === false ? null : cached;
 
-  const { data: planRow } = await supabase!
+  const { data } = await supabase!
     .from('plans')
     .select('merchant_wallet')
     .eq('address', planAddress)
     .single();
-  if (planRow?.merchant_wallet) {
-    planClassCache.set(planAddress, planRow.merchant_wallet);
-    return planRow.merchant_wallet;
-  }
-
-  const maybe = await fetchMaybePlan(rpc as never, address(planAddress));
-  if (!maybe.exists) {
-    planClassCache.set(planAddress, false);
-    return null;
-  }
-
-  const plan = maybe.data;
-  const owner = String(plan.owner);
-
-  // The defining Subly check: is the Subly collector an authorized puller?
-  const pullers = (plan.data.pullers ?? []).map((p) => String(p));
-  const isSubly = SUBLY_SIGNER ? pullers.includes(SUBLY_SIGNER) : true;
-  if (!isSubly) {
-    planClassCache.set(planAddress, false);
-    return null;
-  }
-
-  const status = plan.status === 1 ? 'active' : 'sunset';
-  await supabase!.from('plans').upsert(
-    {
-      address: planAddress,
-      merchant_wallet: owner,
-      mint: String(plan.data.mint),
-      amount: plan.data.terms.amount.toString(),
-      period_hours: Number(plan.data.terms.periodHours),
-      status,
-      on_chain_status: status,
-      plan_id: plan.data.planId.toString(),
-      metadata_uri: plan.data.metadataUri || null,
-    },
-    { onConflict: 'address' },
-  );
-  planClassCache.set(planAddress, owner);
+  const owner = data?.merchant_wallet ?? null;
+  planOwnerCache.set(planAddress, owner ?? false);
   return owner;
 }
 

@@ -3,9 +3,12 @@ import { address } from '@solana/kit';
 import { WalletBalanceCards } from '../components/account/account-ui';
 import { SummaryCards } from '@/components/dashboard/summary-cards';
 import { RevenueCards } from '@/components/dashboard/revenue-cards';
+import { useSyncPlans } from '@/hooks/use-sync-plans';
 
 function DashboardConnected() {
     const { account } = useWallet();
+    // Catch-all: register the merchant's plans with the backend indexer on load.
+    useSyncPlans();
     return (
         <div className="space-y-8 max-w-5xl mx-auto">
             {account && <WalletBalanceCards address={address(account)} />}

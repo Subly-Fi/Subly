@@ -133,6 +133,15 @@ export const sublyApi = {
 
     register: (token: string, body: { email?: string; webhookUrl?: string; name?: string }) =>
       request<{ data: MerchantRecord }>('/merchants/register', { method: 'POST', token, body }).then((r) => r.data),
+
+    // Register the merchant's plan PDAs so the backend indexer polls only those
+    // (instead of the shared program). Best-effort; idempotent server-side.
+    syncPlans: (token: string, planAddresses: string[]) =>
+      request<{ data: { registered: string[]; skipped: string[] } }>('/merchants/plans/sync', {
+        method: 'POST',
+        token,
+        body: { planAddresses },
+      }).then((r) => r.data),
   },
 
   analytics: {
