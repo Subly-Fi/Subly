@@ -110,7 +110,7 @@ export const merchants = new Hono<AuthEnv>()
           continue;
         }
         const status = plan.status === 1 ? 'active' : 'sunset';
-        await db.from('plans').upsert(
+        const { error: upsertError } = await db.from('plans').upsert(
           {
             address: planAddress,
             merchant_wallet: wallet,
@@ -124,6 +124,12 @@ export const merchants = new Hono<AuthEnv>()
           },
           { onConflict: 'address' },
         );
+        if (upsertError) {
+          // Previously swallowed — a failed write was reported as "registered".
+          console.error(`[merchants][sync] db-error plan=${planAddress} rpcHost=${rpcHost}:`, upsertError.message);
+          skipped.push({ address: planAddress, reason: `db-error: ${upsertError.message}` });
+          continue;
+        }
         registered.push(planAddress);
       } catch (err) {
         console.error(`[merchants][sync] error plan=${planAddress} rpcHost=${rpcHost}:`, err);
