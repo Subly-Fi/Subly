@@ -70,6 +70,20 @@ async function resolveTokenProgram(rpc: ReturnType<typeof createSolanaRpc>, mint
     return info.value ? address(String(info.value.owner)) : address(TOKEN_PROGRAM_LEGACY);
 }
 
+/** Polls until an account exists (used to confirm the init tx landed before subscribing). */
+async function waitForAccount(
+    rpc: ReturnType<typeof createSolanaRpc>,
+    addr: ReturnType<typeof address>,
+    { tries = 20, delayMs = 1000 }: { tries?: number; delayMs?: number } = {},
+): Promise<void> {
+    for (let i = 0; i < tries; i++) {
+        const info = await rpc.getAccountInfo(addr, { encoding: 'base64' }).send();
+        if (info.value) return;
+        await new Promise(r => setTimeout(r, delayMs));
+    }
+    throw new Error('Timed out waiting for the subscription account to initialize. Please try again.');
+}
+
 /**
  * Initializes the subscriber's SubscriptionAuthority for this mint (if needed)
  * then sends a plan-verified subscribe transaction. Returns the subscribe tx
@@ -88,16 +102,28 @@ export async function subscribeToPlan(
     const subscriber = signer.address;
 
     const tokenProgram = await resolveTokenProgram(rpc, mint);
+    const [userAta] = await findAssociatedTokenPda({ mint, owner: subscriber, tokenProgram });
+
+    // Preflight checks — a fresh wallet fails the on-chain simulation with an
+    // opaque "Failed to send transaction", so surface the real reason first.
+    const { value: lamports } = await rpc.getBalance(subscriber).send();
+    if (lamports === 0n) {
+        throw new Error('This wallet has no SOL to cover network fees. Add a little SOL and try again.');
+    }
+    const ataInfo = await rpc.getAccountInfo(userAta, { encoding: 'base64' }).send();
+    if (!ataInfo.value) {
+        throw new Error('This wallet holds no USDC yet. Receive some USDC, then subscribe (the first payment is pulled on subscribe).');
+    }
 
     const [saPda] = await findSubscriptionAuthorityPda(
         { tokenMint: mint, user: subscriber },
         { programAddress: progAddr },
     );
 
-    // 1. Init SubscriptionAuthority if it does not exist yet.
+    // 1. Init SubscriptionAuthority if it does not exist yet, then WAIT for it
+    //    to land — subscribing reads this account, so it must be confirmed.
     const saAccount = await rpc.getAccountInfo(saPda, { encoding: 'base64' }).send();
     if (!saAccount.value) {
-        const [userAta] = await findAssociatedTokenPda({ mint, owner: subscriber, tokenProgram });
         const initIx = await getInitSubscriptionAuthorityOverlayInstructionAsync({
             owner: signer,
             tokenMint: mint,
@@ -113,6 +139,7 @@ export async function subscribeToPlan(
             m => appendTransactionMessageInstruction(initIx, m),
         );
         await signAndSendTransactionMessageWithSigners(initMsg);
+        await waitForAccount(rpc, saPda);
     }
 
     // 2. Subscribe with on-chain-verified plan terms.

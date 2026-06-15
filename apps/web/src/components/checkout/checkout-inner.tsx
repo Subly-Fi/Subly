@@ -18,10 +18,12 @@ type Phase = 'loading' | 'ready' | 'subscribing' | 'success' | 'error';
 const USDC_DECIMALS = 1_000_000;
 
 function formatPeriod(hours: number): string {
-    if (hours <= 24) return 'day';
-    if (hours <= 168) return 'week';
-    if (hours <= 744) return 'month';
-    return 'year';
+    const plural = (n: number, unit: string) => (n === 1 ? unit : `${n} ${unit}s`);
+    if (hours < 24) return plural(hours, 'hour');
+    if (hours % 720 === 0) return plural(hours / 720, 'month');
+    if (hours % 168 === 0) return plural(hours / 168, 'week');
+    if (hours % 24 === 0) return plural(hours / 24, 'day');
+    return plural(hours, 'hour');
 }
 
 function ellipsify(s: string, n = 4): string {
