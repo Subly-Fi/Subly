@@ -30,6 +30,44 @@ function ellipsify(s: string, n = 4): string {
     return s.length <= n * 2 ? s : `${s.slice(0, n)}…${s.slice(-n)}`;
 }
 
+/**
+ * Wallet/connector layers wrap the real failure in a generic "Failed to send
+ * transaction" and drop the cause. Walk the error chain and pull out every
+ * message, RPC context, and program-log array we can find.
+ */
+function describeError(err: unknown): string {
+    const parts: string[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let e: any = err;
+    let depth = 0;
+    while (e && depth < 6) {
+        if (typeof e === 'string') {
+            parts.push(e);
+            break;
+        }
+        if (e.message) parts.push(String(e.message));
+        if (e.context) {
+            try {
+                parts.push('context: ' + JSON.stringify(e.context));
+            } catch {
+                /* ignore */
+            }
+        }
+        if (Array.isArray(e.logs) && e.logs.length) parts.push('logs:\n' + e.logs.join('\n'));
+        e = e.cause;
+        depth++;
+    }
+    if (parts.length === 0) {
+        try {
+            parts.push(JSON.stringify(err));
+        } catch {
+            parts.push(String(err));
+        }
+    }
+    // De-dupe consecutive identical lines (wrappers repeat the message).
+    return parts.filter((p, i) => p && p !== parts[i - 1]).join('\n');
+}
+
 export function CheckoutInner({ network }: { network: CheckoutNetwork }) {
     const planAddress = useMemo(() => {
         if (typeof window === 'undefined') return null;
@@ -101,7 +139,8 @@ export function CheckoutInner({ network }: { network: CheckoutNetwork }) {
             setPhase('success');
             if (redirectUrl) setTimeout(() => (window.location.href = redirectUrl), 2500);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Subscription failed');
+            console.error('[subly][subscribe] failed:', err);
+            setError(describeError(err) || 'Subscription failed');
             setPhase('error');
         }
     }, [plan, signer, network, redirectUrl]);
