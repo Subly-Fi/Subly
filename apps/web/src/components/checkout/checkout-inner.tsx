@@ -7,7 +7,7 @@ import {
     useConnectWallet,
     useWalletConnectors,
     useDisconnectWallet,
-    useTransactionSigner,
+    useKitTransactionSigner,
 } from '@solana/connector/react';
 import type { TransactionSigner } from '@solana/kit';
 import { resolvePlan, subscribeToPlan, type ResolvedPlan } from '@/lib/subscribe';
@@ -87,7 +87,7 @@ export function CheckoutInner({ network }: { network: CheckoutNetwork }) {
     const connectors = useWalletConnectors();
     const { connect, isConnecting } = useConnectWallet();
     const { disconnect } = useDisconnectWallet();
-    const { signer } = useTransactionSigner();
+    const { signer } = useKitTransactionSigner();
 
     // Resolve real plan terms from chain.
     useEffect(() => {
