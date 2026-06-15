@@ -122,7 +122,7 @@ export function CheckoutInner({ network }: { network: CheckoutNetwork }) {
 
                     {phase === 'error' && (
                         <div className="text-center">
-                            <p className="text-red-400">{error}</p>
+                            <p className="whitespace-pre-wrap break-words text-left font-mono text-xs text-red-400">{error}</p>
                             <Link href="/" className="mt-4 inline-block text-sm text-zinc-500 hover:text-white">
                                 Back to home
                             </Link>

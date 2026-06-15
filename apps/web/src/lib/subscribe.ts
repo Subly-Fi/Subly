@@ -13,6 +13,8 @@ import {
     setTransactionMessageLifetimeUsingBlockhash,
     appendTransactionMessageInstruction,
     signAndSendTransactionMessageWithSigners,
+    compileTransaction,
+    getBase64EncodedWireTransaction,
 } from '@solana/kit';
 import { findAssociatedTokenPda } from '@solana-program/token';
 import {
@@ -68,6 +70,29 @@ export async function resolvePlan(planAddress: string, network: CheckoutNetwork)
 async function resolveTokenProgram(rpc: ReturnType<typeof createSolanaRpc>, mint: ReturnType<typeof address>) {
     const info = await rpc.getAccountInfo(mint, { encoding: 'base64' }).send();
     return info.value ? address(String(info.value.owner)) : address(TOKEN_PROGRAM_LEGACY);
+}
+
+/**
+ * Simulates a transaction message before the wallet sends it. The connector
+ * exposes a sending signer (sign+send is atomic), so the wallet only surfaces a
+ * generic "Failed to send transaction" on a program error. Simulating the
+ * unsigned, compiled message (sigVerify:false) lets us surface the real on-chain
+ * error and program logs instead.
+ */
+async function simulateOrThrow(
+    rpc: ReturnType<typeof createSolanaRpc>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    msg: any,
+    label: string,
+): Promise<void> {
+    const wire = getBase64EncodedWireTransaction(compileTransaction(msg));
+    const { value } = await rpc
+        .simulateTransaction(wire, { encoding: 'base64', replaceRecentBlockhash: true, sigVerify: false })
+        .send();
+    if (value.err) {
+        const logs = (value.logs ?? []).join('\n');
+        throw new Error(`${label} would fail on-chain: ${JSON.stringify(value.err)}${logs ? `\n${logs}` : ''}`);
+    }
 }
 
 /** Polls until an account exists (used to confirm the init tx landed before subscribing). */
@@ -138,6 +163,7 @@ export async function subscribeToPlan(
             m => setTransactionMessageLifetimeUsingBlockhash(bh, m),
             m => appendTransactionMessageInstruction(initIx, m),
         );
+        await simulateOrThrow(rpc, initMsg, 'Account setup');
         await signAndSendTransactionMessageWithSigners(initMsg);
         await waitForAccount(rpc, saPda);
     }
@@ -165,6 +191,7 @@ export async function subscribeToPlan(
         m => setTransactionMessageLifetimeUsingBlockhash(bh2, m),
         m => appendTransactionMessageInstruction(subscribeIx, m),
     );
+    await simulateOrThrow(rpc, subMsg, 'Subscribe');
     const sig = await signAndSendTransactionMessageWithSigners(subMsg);
     return typeof sig === 'string' ? sig : String(sig);
 }
