@@ -12,7 +12,7 @@ import {
     setTransactionMessageFeePayerSigner,
     setTransactionMessageLifetimeUsingBlockhash,
     appendTransactionMessageInstruction,
-    signAndSendTransactionMessageWithSigners,
+    signTransactionMessageWithSigners,
     compileTransaction,
     getBase64EncodedWireTransaction,
 } from '@solana/kit';
@@ -95,6 +95,22 @@ async function simulateOrThrow(
     }
 }
 
+/**
+ * Signs with the wallet (sign-only) and broadcasts via our own RPC — the same
+ * proven path the merchant dashboard uses. The connector's atomic sign+send
+ * swallows the underlying failure into a generic "Failed to send transaction",
+ * whereas rpc.sendTransaction surfaces the real preflight error and logs.
+ */
+async function signAndSendViaRpc(
+    rpc: ReturnType<typeof createSolanaRpc>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    msg: any,
+): Promise<string> {
+    const signed = await signTransactionMessageWithSigners(msg);
+    const sig = await rpc.sendTransaction(getBase64EncodedWireTransaction(signed), { encoding: 'base64' }).send();
+    return String(sig);
+}
+
 /** Polls until an account exists (used to confirm the init tx landed before subscribing). */
 async function waitForAccount(
     rpc: ReturnType<typeof createSolanaRpc>,
@@ -164,7 +180,7 @@ export async function subscribeToPlan(
             m => appendTransactionMessageInstruction(initIx, m),
         );
         await simulateOrThrow(rpc, initMsg, 'Account setup');
-        await signAndSendTransactionMessageWithSigners(initMsg);
+        await signAndSendViaRpc(rpc, initMsg);
         await waitForAccount(rpc, saPda);
     }
 
@@ -192,6 +208,5 @@ export async function subscribeToPlan(
         m => appendTransactionMessageInstruction(subscribeIx, m),
     );
     await simulateOrThrow(rpc, subMsg, 'Subscribe');
-    const sig = await signAndSendTransactionMessageWithSigners(subMsg);
-    return typeof sig === 'string' ? sig : String(sig);
+    return signAndSendViaRpc(rpc, subMsg);
 }
