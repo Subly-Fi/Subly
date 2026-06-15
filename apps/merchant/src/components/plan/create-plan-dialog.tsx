@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { X, Plus } from 'lucide-react';
-import { Button as SolanaButton, Select, SelectItem, TextInput } from '@solana/design-system';
+import { Button as SolanaButton, TextInput } from '@solana/design-system';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -373,18 +373,16 @@ export function CreatePlanDialog({ open, onOpenChange }: CreatePlanDialogProps) 
                                     placeholder="30"
                                     className="flex-1"
                                 />
-                                <Select
+                                <select
                                     value={periodUnit}
-                                    onValueChange={value => {
-                                        if (value) setPeriodUnit(value as typeof periodUnit);
-                                    }}
-                                    className="w-32 shrink-0"
+                                    onChange={e => setPeriodUnit(e.target.value as typeof periodUnit)}
+                                    className="h-10 w-32 shrink-0 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 >
-                                    <SelectItem value="hours">Hours</SelectItem>
-                                    <SelectItem value="days">Days</SelectItem>
-                                    <SelectItem value="weeks">Weeks</SelectItem>
-                                    <SelectItem value="months">Months</SelectItem>
-                                </Select>
+                                    <option value="hours">Hours</option>
+                                    <option value="days">Days</option>
+                                    <option value="weeks">Weeks</option>
+                                    <option value="months">Months</option>
+                                </select>
                             </div>
                         </div>
 
@@ -420,19 +418,17 @@ export function CreatePlanDialog({ open, onOpenChange }: CreatePlanDialogProps) 
                                             min={new Date(minEndTs * 1000).toLocaleDateString('en-CA')}
                                             className="flex-1"
                                         />
-                                        <Select
+                                        <select
                                             value={endHour}
-                                            onValueChange={value => {
-                                                if (value) setEndHour(value);
-                                            }}
-                                            className="w-28 shrink-0"
+                                            onChange={e => setEndHour(e.target.value)}
+                                            className="h-10 w-28 shrink-0 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                         >
                                             {Array.from({ length: 24 }, (_, i) => (
-                                                <SelectItem key={i} value={i.toString()}>
+                                                <option key={i} value={i.toString()}>
                                                     {i.toString().padStart(2, '0')}:00
-                                                </SelectItem>
+                                                </option>
                                             ))}
-                                        </Select>
+                                        </select>
                                     </div>
                                     {endDate && !isEndDateValid && (
                                         <p className="text-xs text-destructive">

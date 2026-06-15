@@ -13,7 +13,7 @@ import {
     X,
     Share2,
 } from 'lucide-react';
-import { Badge, Button as SolanaButton, Select, SelectItem, TextInput } from '@solana/design-system';
+import { Badge, Button as SolanaButton, TextInput } from '@solana/design-system';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -189,18 +189,19 @@ function EditPlanDialog({
 
                         <div className="grid gap-2">
                             <Label>Icon</Label>
-                            <Select
-                                value={selectedIcon || null}
-                                onValueChange={value => setSelectedIcon(value ?? '')}
-                                placeholder="Select an icon"
+                            <select
+                                value={selectedIcon}
+                                onChange={e => setSelectedIcon(e.target.value)}
                                 disabled={isSunset}
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                             >
-                                {PLAN_ICONS.map(({ name, label, icon: Icon }) => (
-                                    <SelectItem key={name} value={name} icon={<Icon />}>
+                                <option value="">Select an icon</option>
+                                {PLAN_ICONS.map(({ name, label }) => (
+                                    <option key={name} value={name}>
                                         {label}
-                                    </SelectItem>
+                                    </option>
                                 ))}
-                            </Select>
+                            </select>
                         </div>
 
                         <div className="grid gap-2">
@@ -247,20 +248,18 @@ function EditPlanDialog({
                                     className="flex-1"
                                     disabled={isSunset}
                                 />
-                                <Select
+                                <select
                                     value={endHour}
                                     disabled={isSunset}
-                                    onValueChange={value => {
-                                        if (value) setEndHour(value);
-                                    }}
-                                    className="w-28 shrink-0"
+                                    onChange={e => setEndHour(e.target.value)}
+                                    className="h-10 w-28 shrink-0 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                                 >
                                     {Array.from({ length: 24 }, (_, i) => (
-                                        <SelectItem key={i} value={i.toString()}>
+                                        <option key={i} value={i.toString()}>
                                             {i.toString().padStart(2, '0')}:00
-                                        </SelectItem>
+                                        </option>
                                     ))}
-                                </Select>
+                                </select>
                             </div>
                             {endDate && !isEndDateValid && (
                                 <p className="text-xs text-destructive">
