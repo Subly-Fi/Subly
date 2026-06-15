@@ -67,7 +67,19 @@ export const merchants = new Hono<AuthEnv>()
 
     const db = requireSupabase();
     const registered: string[] = [];
-    const skipped: string[] = [];
+    // Each non-registered plan carries a machine-readable reason so the caller
+    // (and our logs) can tell *why* a plan didn't get mirrored, instead of a
+    // silent skip. Reasons: already-known | not-found | not-owner | error.
+    const skipped: { address: string; reason: string }[] = [];
+
+    // Host only (never the api-key) — confirms which cluster the backend polls.
+    const rpcHost = (() => {
+      try {
+        return new URL(process.env.SOLANA_RPC_URL ?? 'https://api.devnet.solana.com').host;
+      } catch {
+        return 'invalid';
+      }
+    })();
 
     // Skip already-registered plans (owned by this merchant) without any RPC.
     const { data: existing } = await db
@@ -79,20 +91,22 @@ export const merchants = new Hono<AuthEnv>()
 
     for (const planAddress of parsed.data.planAddresses) {
       if (known.has(planAddress)) {
-        skipped.push(planAddress);
+        skipped.push({ address: planAddress, reason: 'already-known' });
         continue;
       }
       try {
         const maybe = await fetchMaybePlan(rpc as never, address(planAddress));
         if (!maybe.exists) {
-          skipped.push(planAddress);
+          console.warn(`[merchants][sync] not-found plan=${planAddress} rpcHost=${rpcHost} wallet=${wallet}`);
+          skipped.push({ address: planAddress, reason: 'not-found' });
           continue;
         }
         const plan = maybe.data;
         // Only register plans the caller actually owns (prevents indexing
         // someone else's plan, which would reintroduce stranger traffic).
         if (String(plan.owner) !== wallet) {
-          skipped.push(planAddress);
+          console.warn(`[merchants][sync] not-owner plan=${planAddress} owner=${String(plan.owner)} wallet=${wallet}`);
+          skipped.push({ address: planAddress, reason: 'not-owner' });
           continue;
         }
         const status = plan.status === 1 ? 'active' : 'sunset';
@@ -112,11 +126,12 @@ export const merchants = new Hono<AuthEnv>()
         );
         registered.push(planAddress);
       } catch (err) {
-        console.error(`[merchants] Failed to sync plan ${planAddress}:`, err);
-        skipped.push(planAddress);
+        console.error(`[merchants][sync] error plan=${planAddress} rpcHost=${rpcHost}:`, err);
+        skipped.push({ address: planAddress, reason: 'error' });
       }
     }
 
+    console.log(`[merchants][sync] wallet=${wallet} rpcHost=${rpcHost} registered=${registered.length} skipped=${skipped.length}`);
     return c.json({ data: { registered, skipped } });
   })
 
