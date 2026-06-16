@@ -18,6 +18,7 @@ const links: NavLink[] = [
   { href: '#how', label: 'how' },
   { href: '#for-who', label: 'for who' },
   { href: '#tech', label: 'tech' },
+  { href: '/docs', label: 'docs' },
   { href: 'https://github.com/Subly-Fi', label: 'github', icon: <Github size={16} />, isExternal: true },
   { href: 'https://x.com/SublyFi', label: 'x', icon: <XIcon size={16} />, isExternal: true },
   { href: 'https://t.me/sublyfi', label: 'telegram', icon: <TelegramIcon size={16} />, isExternal: true },
