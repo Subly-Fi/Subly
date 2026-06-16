@@ -8,7 +8,7 @@ import {
   createTransactionMessage,
   setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash,
-  appendTransactionMessageInstruction,
+  appendTransactionMessageInstructions,
   signTransactionMessageWithSigners,
   getSignatureFromTransaction,
   getBase64EncodedWireTransaction,
@@ -17,7 +17,7 @@ import {
   getTransferSubscriptionOverlayInstructionAsync,
   findSubscriptionDelegationPda,
 } from '@subscriptions/client';
-import { findAssociatedTokenPda } from '@solana-program/token';
+import { findAssociatedTokenPda, getCreateAssociatedTokenIdempotentInstruction } from '@solana-program/token';
 import { supabase } from '../lib/supabase';
 import { getSublySignerWallet, PROGRAM_ADDRESS, rpc } from '../lib/solana';
 import { dispatchMerchantWebhook } from '../lib/webhook-dispatcher';
@@ -160,6 +160,18 @@ async function collectForPlan(
         tokenProgram,
       });
 
+      // Ensure the merchant's destination token account exists. A merchant that
+      // has never held this mint has no ATA, so the transfer would fail with
+      // INVALID_TOKEN_SPL_TOKEN_ACCOUNT_DATA (0x6e). Idempotent: a no-op if the
+      // ATA already exists. Subly's signer pays the (one-time) rent.
+      const createReceiverAtaIx = getCreateAssociatedTokenIdempotentInstruction({
+        ata: receiverAta,
+        mint: mintAddr,
+        owner: merchantAddr,
+        payer: signer,
+        tokenProgram,
+      });
+
       const instruction = await getTransferSubscriptionOverlayInstructionAsync({
         amount: BigInt(plan.amount),
         caller: signer,
@@ -178,7 +190,7 @@ async function collectForPlan(
         createTransactionMessage({ version: 0 }),
         (m) => setTransactionMessageFeePayerSigner(signer, m),
         (m) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, m),
-        (m) => appendTransactionMessageInstruction(instruction, m),
+        (m) => appendTransactionMessageInstructions([createReceiverAtaIx, instruction], m),
       );
 
       const signedTx = await signTransactionMessageWithSigners(txMessage);
