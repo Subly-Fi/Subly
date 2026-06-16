@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { useCluster } from '@solana/connector/react';
 import { Button } from '@solana/design-system';
-import { ChevronDown, Menu, RotateCcw, Settings2 } from 'lucide-react';
+import { BookOpen, ChevronDown, Menu, RotateCcw, Settings2 } from 'lucide-react';
+
+const DOCS_URL = 'https://www.subly.fi/docs';
 
 import {
     DropdownMenu,
@@ -167,6 +169,14 @@ export function AppHeader() {
 
                 <nav className="hidden md:flex items-center gap-1">
                     <NavLinks items={filteredItems} pathname={pathname} />
+                    <a
+                        href={DOCS_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-full px-3 py-2 text-sm font-medium text-sand-1100 transition-colors hover:text-foreground hover:bg-sand-100"
+                    >
+                        Docs
+                    </a>
                 </nav>
 
                 <div className="hidden md:flex items-center gap-2">
@@ -196,6 +206,17 @@ export function AppHeader() {
                                     </Link>
                                 </DropdownMenuItem>
                             ))}
+                            <DropdownMenuItem asChild>
+                                <a
+                                    href={DOCS_URL}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-2"
+                                >
+                                    <BookOpen className="h-4 w-4" />
+                                    Docs
+                                </a>
+                            </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <div className="p-2 flex flex-col gap-2">
                                 <TimeTravelButton />
