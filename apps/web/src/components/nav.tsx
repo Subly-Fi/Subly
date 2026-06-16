@@ -46,7 +46,7 @@ export function Nav() {
             </a>
           ))}
           <a
-            href="/app"
+            href="https://app.subly.fi"
             className="bg-white px-4 py-1.5 text-sm font-semibold text-black transition-all hover:bg-zinc-200 hover:shadow-[0_0_20px_rgba(255,255,255,0.1)]"
           >
             launch app
@@ -88,7 +88,7 @@ export function Nav() {
                 </a>
               ))}
               <a
-                href="/app"
+                href="https://app.subly.fi"
                 className="block bg-white px-4 py-2.5 text-center text-sm font-semibold text-black transition-colors hover:bg-zinc-200"
               >
                 launch app

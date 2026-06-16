@@ -16,6 +16,7 @@ const DEFAULT_ORIGINS = [
   'http://localhost:3001',
   'https://www.subly.fi',
   'https://subly.fi',
+  'https://app.subly.fi',
   'https://subly-merchant.vercel.app',
 ];
 const EXTRA_ORIGINS = (process.env.CORS_ORIGINS ?? '')

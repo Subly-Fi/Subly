@@ -94,7 +94,7 @@ export function Hero() {
           className="mt-12 flex flex-col items-center justify-center gap-4 sm:flex-row"
         >
           <a
-            href="/app"
+            href="https://app.subly.fi"
             className="group relative w-full overflow-hidden bg-white px-8 py-3 text-sm font-bold uppercase tracking-wider text-black transition-colors hover:bg-zinc-200 sm:w-auto"
           >
             <span className="relative z-10">launch app</span>
